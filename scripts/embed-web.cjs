@@ -1,0 +1,1 @@
+const fs=require('fs');const html=fs.readFileSync('web/index.html','utf8');fs.writeFileSync('firmware/LavCounter/WebPage.h','#pragma once\n#include <Arduino.h>\nstatic const char WEB_PAGE[] PROGMEM = R"lavpage('+html+')lavpage";\n');

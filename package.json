@@ -1,0 +1,17 @@
+{
+  "name": "lavcounter",
+  "version": "1.0.0",
+  "description": "LavCounter firmware and embedded web validation",
+  "scripts": {
+    "build:web": "node scripts/embed-web.cjs",
+    "test:web": "playwright test",
+    "test": "powershell -ExecutionPolicy Bypass -File scripts/test-native.ps1"
+  },
+  "keywords": [],
+  "author": "",
+  "type": "commonjs",
+  "devDependencies": {
+    "@playwright/test": "1.56.1"
+  },
+  "private": true
+}
