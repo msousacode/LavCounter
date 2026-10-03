@@ -2,84 +2,61 @@
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include "Event.h"
-// JSONL storage derived from the original Storage module. Never auto-formats.
+// Journal is ordered by increasing reserved session ID. Two records per session.
 class EventStorage {
- static constexpr const char* PATH="/events-v1.jsonl";
- static constexpr size_t MAX_LINE=8192;
- uint64_t lastId=0;bool ready=false;
- String pending[8];uint8_t pendingCount=0;uint64_t pendingIds[8]={};uint64_t lastAttempt=0;
+ static constexpr const char* PATH="/presence-v2.jsonl";
+ static constexpr size_t MAX_LINE=4096;
+ bool ready=false,retrying=false;String pending[8];unsigned count=0;uint64_t lastAttempt=0,bootMax=0,lastObserved=0;
  void (*service)()=nullptr;
- bool line(File& f,String& out){
-  out="";bool oversized=false,terminated=false;
-  while(f.available()){
-   char c=(char)f.read();if(c=='\n'){terminated=true;break;}
-   if(out.length()<MAX_LINE)out+=c;else oversized=true;
-   if((out.length()%256)==0&&service)service();
-  }
-  if(oversized||!terminated){degraded=true;return false;}return !out.isEmpty();
+ bool line(File& f,String& out){out="";bool over=false;while(f.available()){int c=f.read();if(c=='\n')return !over&&!out.isEmpty();if(out.length()<MAX_LINE)out+=(char)c;else over=true;if(service&&out.length()%128==0)service();}if(out.length())degraded=true;return false;}
+ static uint64_t idOf(JsonDocument& d){const char* s=d["sessionId"]|"";if(!*s)return 0;uint64_t id=0;for(;*s;s++){if(*s<'0'||*s>'9'||id>(UINT64_MAX-(*s-'0'))/10)return 0;id=id*10+(*s-'0');}return id;}
+ bool parse(const String& row,JsonDocument& d){if(deserializeJson(d,row)||d["schemaVersion"]!=2||!idOf(d)||!d["validated"].is<bool>()){degraded=true;return false;}const char* type=d["type"]|"";if(strcmp(type,"validated")&&strcmp(type,"closed")){degraded=true;return false;}return true;}
+ template<class Visit> void records(bool withPending,Visit visit){
+  File f=SPIFFS.open(PATH,FILE_READ);if(!f&&SPIFFS.exists(PATH)){degraded=true;error="Falha ao ler histórico.";}String row;while(f&&f.available()){if(line(f,row)){JsonDocument d;if(parse(row,d))visit(d);}else degraded=true;if(service)service();}f.close();
+  // Snapshot prevents newly queued entries changing this traversal.
+  unsigned n=withPending?count:0;for(unsigned i=0;i<n;i++){JsonDocument d;if(parse(pending[i],d))visit(d);}
  }
- bool append(const String& value,uint64_t expectedId){
-  if(!ready){error="Armazenamento indisponível. Histórico não foi apagado.";return false;}
-  if(SPIFFS.totalBytes()-SPIFFS.usedBytes()<value.length()+512){error="Armazenamento cheio. Exporte o histórico e faça manutenção.";return false;}
-  bool separator=false,completeWithoutNewline=false;File check=SPIFFS.open(PATH,FILE_READ);
-  if(check&&check.size()){
-   check.seek(check.size()-1);separator=check.read()!='\n';
-   if(separator){
-    size_t start=check.size()>MAX_LINE?check.size()-MAX_LINE:0;check.seek(start);String tail;
-    while(check.available()){char c=(char)check.read();if(c=='\n')tail="";else tail+=c;}
-    JsonDocument previous;
-    if(!deserializeJson(previous,tail)&&previous["id"].is<const char*>())completeWithoutNewline=strtoull(previous["id"].as<const char*>(),nullptr,10)==expectedId;
-   }
-  }check.close();
+ bool append(const String& value){
+  if(!ready){error="Armazenamento indisponível.";return false;}
+  if(SPIFFS.usedBytes()>=SPIFFS.totalBytes()||SPIFFS.totalBytes()-SPIFFS.usedBytes()<value.length()+512){error="Armazenamento cheio; preserve e exporte os dados.";return false;}
+  bool separator=false;File check=SPIFFS.open(PATH,FILE_READ);if(check&&check.size()){check.seek(check.size()-1);separator=check.read()!='\n';}check.close();
   File f=SPIFFS.open(PATH,FILE_APPEND);if(!f){error="Falha ao abrir histórico.";return false;}
-  size_t prefix=separator?f.print('\n'):0;
-  if(completeWithoutNewline){f.flush();f.close();if(prefix==1)return true;error="Falha ao concluir registro pendente.";return false;}
-  size_t bytes=(!separator||prefix==1)?f.print(value):0;
-  size_t newline=bytes==value.length()?f.print('\n'):0;f.flush();f.close();
-  if((separator&&prefix!=1)||bytes!=value.length()||newline!=1){error="Gravação incompleta; evento aguarda nova tentativa.";degraded=true;return false;}
-  return true;
+  if(separator&&f.print('\n')!=1){f.close();error="Falha ao separar registro incompleto.";return false;}
+  size_t bytes=f.print(value);size_t newline=bytes==value.length()?f.print('\n'):0;f.flush();f.close();
+  if(bytes!=value.length()||newline!=1){degraded=true;error="Gravação incompleta; registro pendente.";return false;}return true;
  }
 public:
- String error;bool degraded=false;uint32_t lostEvents=0;
+ String error;bool degraded=false;uint32_t lostEvents=0;uint64_t observed=0;
+ struct Totals {uint64_t total=0,today=0,undated=0;};
  bool begin(void (*callback)()){
-  service=callback;ready=SPIFFS.begin(false);
-  if(!ready){error="SPIFFS não montado. Inicialize a partição explicitamente; não houve formatação automática.";return false;}
-  File f=SPIFFS.open(PATH,FILE_READ);String row;
-  while(f&&f.available()){
-   if(line(f,row)){JsonDocument d;if(deserializeJson(d,row)||!d["id"].is<const char*>()){degraded=true;continue;}
-    uint64_t id=strtoull(d["id"].as<const char*>(),nullptr,10);if(id>lastId)lastId=id;}
-   if(service)service();
-  }f.close();return true;
+  service=callback;ready=SPIFFS.begin(false);if(!ready){error="SPIFFS indisponível; nenhuma formatação foi realizada.";return false;}
+  scan(false,[&](JsonDocument& d){uint64_t id=idOf(d);if(id>bootMax)bootMax=id;if(d["validated"]==true)observed++;});lastObserved=bootMax;return true;
  }
- void enqueue(const Event& e){
-  if(e.id==0){lostEvents++;error="Evento sem ID persistente; verifique a memória de configuração.";return;}
-  if(pendingCount==8){lostEvents++;error="Fila de gravação cheia; há eventos não persistidos.";return;}
-  JsonDocument d;e.json(d);serializeJson(d,pending[pendingCount]);pendingIds[pendingCount]=e.id;pendingCount++;
+ void setService(void (*callback)()){service=callback;}
+ uint64_t maxId()const{return bootMax;}
+ bool enqueue(const Event& e){
+  if(!e.closed&&e.validated&&(!e.id||e.id>lastObserved)){observed++;lastObserved=e.id;}
+  if(!e.id||count==8){lostEvents++;error="Registro não persistido: fila cheia ou ID indisponível.";return false;}
+  JsonDocument d;e.json(d);String row;serializeJson(d,row);
+  for(unsigned i=0;i<count;i++)if(pending[i]==row.c_str())return true;
+  pending[count++]=row;return true;
  }
  void tick(uint64_t now){
-  if(!pendingCount||now-lastAttempt<5000000)return;lastAttempt=now;
-  if(pendingIds[0]>lastId){if(!append(pending[0],pendingIds[0]))return;lastId=pendingIds[0];}
-  for(size_t i=1;i<pendingCount;i++){pending[i-1]=pending[i];pendingIds[i-1]=pendingIds[i];}
-  pending[--pendingCount]="";error="";
+  if(!count||(retrying&&now-lastAttempt<5000000))return;lastAttempt=now;
+  if(!append(pending[0])){retrying=true;return;}retrying=false;
+  for(unsigned i=1;i<count;i++)pending[i-1]=pending[i];pending[--count]="";error="";
  }
- unsigned queued()const{return pendingCount;}
- bool mounted()const{return ready;}
- size_t used()const{return ready?SPIFFS.usedBytes():0;}
- size_t capacity()const{return ready?SPIFFS.totalBytes():0;}
- template<class Emit> uint32_t page(uint32_t cursor,unsigned limit,const String& category,Emit emit,bool& more){
-  more=false;if(!ready)return 0;File f=SPIFFS.open(PATH,FILE_READ);if(!f)return 0;
-  if(cursor>f.size()){f.close();return 0;}
-  if(cursor){f.seek(cursor-1);if(f.read()!='\n'){f.close();return 0;}}else f.seek(0);
-  unsigned count=0;String row;uint64_t previousId=0;
-  while(f.available()){
-   bool complete=line(f,row);if(service)service();
-   if(!complete)continue;JsonDocument d;
-   if(deserializeJson(d,row)||!d["id"].is<const char*>()||!d["category"].is<const char*>()){degraded=true;continue;}
-   uint64_t id=strtoull(d["id"].as<const char*>(),nullptr,10);
-   if(id==previousId){degraded=true;continue;}previousId=id;
-   if(category.length()&&category!=d["category"].as<const char*>())continue;
-   emit(row);if(++count==limit)break;
-  }
-  uint32_t next=f.position();more=f.available();f.close();return next;
+ unsigned queued()const{return count;}bool mounted()const{return ready;}
+ size_t used()const{return ready?SPIFFS.usedBytes():0;}size_t capacity()const{return ready?SPIFFS.totalBytes():0;}
+ // Constant memory streaming consolidation; late/out-of-order journal entries are rejected.
+ template<class Visit> void scan(bool withPending,Visit visit){
+  JsonDocument merged;uint64_t currentId=0;bool closed=false;
+  auto emit=[&](){if(!currentId)return;merged["interrupted"]=!closed&&currentId<=bootMax;visit(merged);};
+  records(withPending,[&](JsonDocument& d){uint64_t id=idOf(d);if(id<currentId){degraded=true;return;}bool nextClosed=d["type"]=="closed";
+   if(id!=currentId){emit();currentId=id;closed=nextClosed;merged.set(d);}
+   else if(nextClosed&&!closed){merged.set(d);closed=true;}
+  });emit();
  }
+ Totals totals(bool includePending,const char* date){Totals t;if(!ready&&!includePending)return t;scan(includePending,[&](JsonDocument& d){if(d["validated"]!=true)return;t.total++;const char* when=d["validatedAt"]|"";if(!*when)t.undated++;else if(date&&strlen(date)>=10&&!strncmp(when,date,10))t.today++;});return t;}
+ template<class Emit> uint64_t page(uint64_t after,unsigned limit,Emit emit,bool& more){unsigned n=0;uint64_t next=after;more=false;scan(true,[&](JsonDocument& d){uint64_t id=idOf(d);if(id<=after)return;if(n>=limit){more=true;return;}emit(d);next=id;n++;});return next;}
 };

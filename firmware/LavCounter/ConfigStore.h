@@ -1,5 +1,5 @@
 #pragma once
-#include <ArduinoJson.h>
+ #include <ArduinoJson.h>
 #include <Preferences.h>
 #include "Detection.h"
 
@@ -22,7 +22,7 @@ inline bool parseConfig(JsonVariantConst input,lav::Config& c,JsonObject errors)
    double value=v.as<double>(),step=lav::FIELDS[i].step;
    double rounded=round(value/step)*step;
    if(!isfinite(value)||value<lav::FIELDS[i].min-step/100||value>lav::FIELDS[i].max+step/100||
-      ((i==lav::MIN_PAUSES||i==lav::MIN_RESUMES||i==lav::SCORE)&&floor(value)!=value)){
+      (floor(value)!=value)){
     errors[lav::FIELDS[i].key]="Use um valor dentro dos limites e da precisão indicada.";ok=false;
    }
    else c.v[i]=rounded;
@@ -38,7 +38,7 @@ public:
  lav::Config current; String error;
  bool begin(){
   ready=prefs.begin("lavcounter",false);if(!ready){error="Não foi possível abrir a configuração.";return false;}
-  String saved=prefs.getString("config","");if(saved.isEmpty())return true;
+  String saved=prefs.getString("presenceConfig","");if(saved.isEmpty())return true;
   JsonDocument d,errors;
   if(deserializeJson(d,saved)||!parseConfig(d.as<JsonVariantConst>(),current,errors.to<JsonObject>())){current=lav::Config{};error="Configuração inválida; padrões carregados. Salve para corrigir.";return false;}
   current.revision=d["revision"]|1U;return true;
@@ -46,8 +46,14 @@ public:
  bool save(lav::Config next){
   if(!ready||next.invalid()>=0||current.revision==UINT32_MAX){error="Não foi possível salvar a configuração.";return false;}
   next.revision=current.revision+1;JsonDocument d;configJson(d.to<JsonObject>(),next);String value;serializeJson(d,value);
-  if(prefs.putString("config",value)!=value.length()){error="Falha ao persistir; configuração anterior mantida.";return false;}
+  if(prefs.putString("presenceConfig",value)!=value.length()){error="Falha ao persistir; configuração anterior mantida.";return false;}
   current=next;error="";return true;
+ }
+ bool ensureIdAbove(uint64_t last){
+  if(!ready||last==UINT64_MAX){ready=false;error="Sequência de IDs indisponível.";return false;}
+  uint64_t next=prefs.getULong64("nextId",1);
+  if(next>last)return true;
+  if(prefs.putULong64("nextId",last+1)!=sizeof(uint64_t)){error="Falha ao sincronizar identificador.";ready=false;return false;}return true;
  }
  uint64_t reserveId(){
   if(!ready)return 0;uint64_t next=prefs.getULong64("nextId",1);
@@ -63,4 +69,3 @@ public:
   }
  }
 };
-

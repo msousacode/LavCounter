@@ -1,36 +1,46 @@
-# Validação da implementação — 25/09/2026
+# Validação por presença — 01/10/2026
+
+## Software
+
+- `./scripts/test-native.ps1`: núcleo, armazenamento e sketch/handlers reais com periféricos simulados; execução aprovada. Inclui calendário/RTC (1.200 meses), preservado da suíte anterior.
+- `npm run test:web`: cinco testes aprovados no Edge headless. Cobrem uso offline, sessão candidata/validada, contagem observada/persistida, texto seguro, salvar/cancelar/restaurar, falha de persistência, sensor/RTC indisponível e layout móvel.
+- Capturas: `build/web-config.png`, `build/web-events.png`, `build/web-mobile.png`. Parametrização e layout móvel inspecionados visualmente.
+- `openspec validate reestruturar-lavcounter-vl53l1x --strict`: validação estrita aprovada.
+- Cabeçalho web gerado por `node scripts/embed-web.cjs`; fonte operacional sem métricas hidráulicas.
+
+## Rastreabilidade
+
+| Spec / cenários | Evidência |
+| --- | --- |
+| vehicle-presence: distância no limiar, falha de aquisição | tests/firmware.cpp: igualdade em 1500 mm, ausência em 1501 mm, inválida, timeout, expiração, desconexão e recuperação |
+| vehicle-presence: limite exato, permanência prolongada, presença interrompida | tests/core.cpp: sequência a 100 ms, reinício da continuidade, validação única |
+| vehicle-presence: saída e próximo veículo, ausência breve/falha | tests/core.cpp e tests/firmware.cpp: tolerância, desconhecido durante ausência, encerramento e nova sessão |
+| vehicle-presence: edição durante sessão, entradas inválidas/falha | tests/storage.cpp e tests/firmware.cpp: snapshot, revisão concorrente, limites, fração, falha de gravação e boot |
+| vehicle-presence: semáforo normal e falha após validação | tests/core.cpp: cor/fase; tests/firmware.cpp: GPIO verde; bancada itens 1–5 para sinais físicos |
+| wash-history: lavagem ainda presente e reenvio/encerramento | tests/storage.cpp: validação em fila/disco, duplicatas, fechamento sob mesmo ID, linha sem newline e reenvio |
+| wash-history: RTC inválido/ajustado | tests/firmware.cpp: data inicial preservada e clockAdjusted; tests/storage.cpp: sem data e mudança de dia |
+| wash-history: reinício com veículo | tests/core.cpp: WAIT_CLEAR; tests/storage.cpp: contagem reconstruída, interrupted sem saída inventada; bancada item 8 |
+| wash-history: armazenamento indisponível e migração | tests/storage.cpp: montagem falha, espaço insuficiente, fila cheia, legacyDisk e chave config preservados, IDs sincronizados |
+| local-dashboard: offline e autenticação | tests/web/ui.spec.cjs: nenhuma requisição externa; tests/firmware.cpp: todas as rotas autenticadas |
+| local-dashboard: validação pendente e RTC indisponível | testes web e firmware: totais separados, diário indisponível, distância inválida |
+| local-dashboard: uso sem premium | painel autocontido, agregados em Storage.h independentes de HTTP, teste web restringe rede à origem local |
 
 ## Compilação ESP32
 
-Comando reproduzível: `./scripts/build.ps1`.
+Resultado final: **sucesso**, com os fontes revisados. Flash: **1.112.384 / 1.310.720 bytes (84%)**. RAM estática: **51.424 / 327.680 bytes (15%)**, restando 276.256 bytes. Log: `build/compile.log`; binário: `build/firmware/LavCounter.ino.bin`. Dependências instaladas e fixadas: esp32:esp32 3.3.10, ArduinoJson 7.4.2 e Pololu VL53L1X 1.3.1. Comando: `./scripts/build.ps1`. FQBN: `esp32:esp32:esp32:PartitionScheme=default,FlashSize=4M`.
 
-- Arduino CLI 1.5.1; core ESP32 3.3.10; ArduinoJson 7.4.2.
-- FQBN `esp32:esp32:esp32:PartitionScheme=default,FlashSize=4M`.
-- Resultado final: **sucesso**.
-- Flash de aplicação: **1.109.768 / 1.310.720 bytes (84%)**.
-- RAM estática: **85.208 / 327.680 bytes (26%)**, restando 242.472 bytes para uso dinâmico/local.
-- Log: `build/compile.log`; binário: `build/firmware/LavCounter.ino.bin`.
-- A tentativa de build da base antiga foi interrompida para reduzir concorrência; não é usada como evidência. A primeira compilação da versão integrada passou, seguida da compilação final acima.
+## Limites e bancada pendente
 
-## Testes de software
+Nenhum upload ou ensaio físico foi feito. Testes simulados não comprovam alcance óptico, condições elétricas, latência real com flash ocupada, enlace Wi-Fi nem durabilidade de gravação sob corte de energia. Execute [BANCADA.md](BANCADA.md) na unidade real. A contagem infere lavagem pela permanência; a montagem deve produzir uma leitura válida do box vazio.
 
-`./scripts/test-native.ps1` usa Zig 0.14.1 como compilador C++ para executar o código real no computador:
-
-- Núcleo: limites de configuração, volume fracionário, sessões, pausas, retomadas, timeout na fronteira, contador de 64 bits, classificação e limiares das seis evidências, filtro e overflow.
-- Calendário: BCD, dia da semana/data, horas 12/24, flag de oscilação, datas inválidas, ano bissexto, viradas e 1.200 meses entre 2000 e 2099.
-- ConfigStore/Event/Storage reais com NVS/SPIFFS simulados: persistência, falha atômica, IDs entre reinícios, JSON, gravação parcial, armazenamento cheio e paginação de 66 registros.
-- Sketch/handlers reais com transporte e hardware simulados: autenticação em todas as sete rotas e fallback, configuração durante sessão, persistência após reinício simulado, correção do relógio, timeout exato, falha I2C e overflow de aquisição.
-
-`npm run test:web`: **5 testes aprovados** no Microsoft Edge headless com API simulada. Cobrem histórico, texto seguro, salvar/cancelar/restaurar, erro por campo, falha de persistência, layout móvel, RTC e edição/envio dos **18 parâmetros reais**. Capturas em `build/web-config.png`, `build/web-events.png` e `build/web-mobile.png`. O layout foi inspecionado visualmente.
-
-Dependências de teste: `npm ci`; Zig 0.14.1 em `tools/zig-x86_64-windows-0.14.1` ou parâmetro `-Zig`; ArduinoJson instalada no diretório Arduino ou parâmetro `-ArduinoJson`. O compilador de testes não é incorporado ao firmware.
-
-## Limite da validação
-
-`arduino-cli board list --format json` retornou `detected_ports: []`. Nenhum firmware foi gravado em dispositivo. Conexão Wi-Fi real, RTC físico, contagem elétrica e calibração com água ainda precisam do [roteiro de bancada](BANCADA.md).
-
-Testes de navegador simulam a API; testes nativos executam os handlers de produção com transporte simulado. Eles não comprovam o enlace Wi-Fi nem a persistência elétrica do hardware. A tarefa de acesso local no ESP32 e a aceitação física permanecem abertas.
+As evidências anteriores de fluxo pertencem à mudança lavcounter-deteccao-lavagem e ao histórico Git. Seus itens de bancada não foram marcados como concluídos nem a mudança foi arquivada.
 
 ## Progresso OpenSpec
 
-24/27 tarefas concluídas. Permanecem abertas 6.3 (acesso real ao AP), 7.2 (bancada com sensor e RTC) e 7.3 (aceitação física). Nenhum upload foi realizado. A implementação e a validação de software estão concluídas; a mudança não foi arquivada.
+19/19 tarefas de implementação e verificação de software concluídas. Mudança pronta para arquivamento; bancada física pendente conforme roteiro, sem upload realizado.
+
+## Semáforo — 02/10/2026
+
+Pinagem atual: vermelho GPIO25, amarelo GPIO18 e verde GPIO19, com saída ativa em nível alto. GPIO5 deixou de ser acionado. Testes nativos aprovados para todas as combinações de estado/saúde, limites de 499/500/999/1000 ms, exclusividade das cores e transições reais de vermelho para amarelo e verde. A indicação inicial é atualizada já no setup. Ligação física pressupõe indicadores compatíveis com 3,3 V e baixa corrente; conferir a tensão nominal dos LEDs com resistor embutido antes de conectar.
+
+Compilação da revisão dos LEDs: **aprovada** via `./scripts/build.ps1`, com 1.112.484 bytes de flash (84%) e 51.424 bytes de RAM estática (15%). Nenhum upload ou teste físico realizado.

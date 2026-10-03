@@ -38,8 +38,7 @@ inline String operator+(const String& a,const String& b){return a+b.c_str();}
 using portMUX_TYPE=int;
 inline void portENTER_CRITICAL(portMUX_TYPE*){} inline void portEXIT_CRITICAL(portMUX_TYPE*){}
 inline void portENTER_CRITICAL_ISR(portMUX_TYPE*){} inline void portEXIT_CRITICAL_ISR(portMUX_TYPE*){}
-inline void pinMode(int,int){}inline void digitalWrite(int,int){}inline int digitalPinToInterrupt(int p){return p;}
+inline int pinValues[40]={};inline void pinMode(int,int){}inline void digitalWrite(int p,int v){pinValues[p]=v;}inline int digitalPinToInterrupt(int p){return p;}
 inline void attachInterrupt(int,void(*)(),int){}inline void delay(int){}
 struct FakeSerial {void begin(int){} template<class... A>void printf(const char*,A...){} template<class T>void print(T){}template<class T>void println(T){}};
 inline FakeSerial Serial;
-

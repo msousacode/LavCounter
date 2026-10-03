@@ -1,30 +1,27 @@
-#include <stdlib.h>
-#include <new>
-void* operator new(size_t n){void* p=malloc(n);if(!p)abort();return p;}
-void operator delete(void* p) noexcept{free(p);}
-void operator delete(void* p,size_t) noexcept{free(p);}
-#include "../firmware/LavCounter/Storage.h"
 #include <assert.h>
+#include <stdio.h>
+#include "../firmware/LavCounter/Storage.h"
 int main(){
- ConfigStore s;assert(s.begin());lav::Config c=s.current;c.v[lav::TIMEOUT]=90;assert(s.save(c));assert(s.current.revision==2);
- ConfigStore reboot;assert(reboot.begin());assert(reboot.current.v[lav::TIMEOUT]==90);
- auto original=reboot.current;Preferences::fail=true;c.v[lav::TIMEOUT]=60;assert(!reboot.save(c));assert(reboot.current.v[lav::TIMEOUT]==90);Preferences::fail=false;
- uint64_t first=reboot.reserveId();ConfigStore boot2;assert(boot2.begin());assert(boot2.reserveId()==first+1);
- JsonDocument invalid,errors;configJson(invalid.to<JsonObject>(),original);invalid["timeoutSeconds"]=0;assert(!parseConfig(invalid.as<JsonVariantConst>(),c,errors.to<JsonObject>()));
- Event e;e.id=first;e.config=original;e.metrics.first=0;e.metrics.last=1000000;e.metrics.flowUs=1000000;e.metrics.pulses=225;e.startedAt="2026-09-25T12:00:00";e.finishedAt="2026-09-25T12:00:01";e.closedAt="2026-09-25T12:01:31";
- JsonDocument record;e.json(record);assert(record["volumeL"].as<double>()==.5);assert(record["config"]["revision"].as<unsigned>()==2);assert(record["timeQuality"]=="rtc-projected");
- EventStorage h;assert(h.begin(nullptr));h.enqueue(e);h.tick(5000000);assert(h.queued()==0);String complete=disk.bytes;
- bool more=false;unsigned count=0;h.page(0,50,"",[&](const String& row){JsonDocument d;assert(!deserializeJson(d,row));assert(d["pulses"]==225);count++;},more);assert(count==1&&!more);
- EventStorage rebootHistory;assert(rebootHistory.begin(nullptr));rebootHistory.enqueue(e);rebootHistory.tick(5000000);assert(disk.bytes.length()==complete.length());
- // Partial record survives, retry becomes a separate complete JSONL record.
- e.id=10;disk.budget=30;h.enqueue(e);h.tick(10000000);assert(h.queued()==1&&!h.error.isEmpty());disk.budget=1000000;h.tick(15000000);assert(h.queued()==0);count=0;h.page(0,50,"",[&](const String&){count++;},more);assert(count==2&&h.degraded);
- // Full medium preserves prior bytes and keeps pending data.
- e.id=11;h.enqueue(e);auto length=disk.bytes.length();disk.capacity=length;h.tick(20000000);assert(h.queued()==1&&disk.bytes.length()==length);disk.capacity=1000000;h.tick(25000000);assert(h.queued()==0);
- // >50 records, explicit pagination and category filtering.
- for(unsigned i=12;i<75;i++){e.id=i;h.enqueue(e);h.tick((uint64_t)i*5000000);}
- count=0;uint32_t cursor=h.page(0,50,"unidentified",[&](const String&){count++;},more);assert(count==50&&more);unsigned remainder=0;h.page(cursor,50,"unidentified",[&](const String&){remainder++;},more);assert(remainder==16&&!more);
- // Truncated tail must not make earlier rows unreadable.
- disk.bytes+="{bad";EventStorage degraded;assert(degraded.begin(nullptr));assert(degraded.degraded);count=0;degraded.page(0,50,"",[&](const String&){count++;},more);assert(count==50);
- disk.mounted=false;EventStorage absent;assert(!absent.begin(nullptr));assert(!absent.error.isEmpty());
- printf("PASS: real ConfigStore/Event/Storage with fake NVS and SPIFFS: persistence, atomic failure, IDs, JSON, partial writes, full disk, restart, 66 records/pagination\n");
+ legacyDisk.bytes="preserved-old-history";Preferences::legacy="legacy-config";ConfigStore cfg;assert(cfg.begin());assert(cfg.current.v[lav::WASH_SECONDS]==120);auto c=cfg.current;c.v[lav::WASH_SECONDS]=1;assert(cfg.save(c));ConfigStore reboot;assert(reboot.begin());assert(reboot.current.v[lav::WASH_SECONDS]==1);assert(Preferences::legacy=="legacy-config");
+ Preferences::fail=true;c.v[lav::WASH_SECONDS]=2;assert(!cfg.save(c));assert(cfg.current.v[lav::WASH_SECONDS]==1);Preferences::fail=false;
+ JsonDocument configInput,errors;configJson(configInput.to<JsonObject>(),cfg.current);configInput["washMinSeconds"]=1.5;lav::Config parsed;assert(!parseConfig(configInput.as<JsonVariantConst>(),parsed,errors.to<JsonObject>()));
+ EventStorage store;assert(store.begin(nullptr));Event e;e.id=1;e.validated=true;e.startedAt="2026-10-01T12:00:00";e.validatedAt="2026-10-01T12:02:00";
+ assert(store.enqueue(e));assert(store.enqueue(e));assert(store.observed==1);assert(store.queued()==1);assert(store.totals(false,"2026-10-01").total==0);assert(store.totals(true,"2026-10-01").total==1);store.tick(5000000);assert(store.queued()==0);
+ assert(store.totals(false,"2026-10-01").today==1);assert(store.totals(false,"2026-10-02").today==0);
+ e.closed=true;e.closedAt="2026-10-01T12:03:00";e.durationMs=180000;assert(store.enqueue(e));store.tick(10000000);assert(store.totals(false,"2026-10-01").total==1);
+ EventStorage restarted;assert(restarted.begin(nullptr));assert(restarted.observed==1);
+ bool more;unsigned rows=0;restarted.page(0,20,[&](JsonDocument& d){rows++;assert(d["closedAt"]=="2026-10-01T12:03:00");assert(d["interrupted"]==false);assert(d["volumeL"].isNull());},more);assert(rows==1&&!more);
+ e.id=2;e.closed=false;e.closedAt="";e.validatedAt="";store.enqueue(e);disk.budget=20;store.tick(15000000);assert(store.queued()==1);disk.budget=100000;store.tick(20000000);assert(store.queued()==0);assert(store.totals(false,"").undated==1);
+ EventStorage interrupted;assert(interrupted.begin(nullptr));rows=0;interrupted.page(1,1,[&](JsonDocument& d){rows++;assert(d["interrupted"]==true);assert(d["closedAt"].isNull());},more);assert(rows==1);
+ // Complete JSON but missing newline, then retry: must consolidate one ID.
+ e.id=3;JsonDocument data;e.json(data);String serialized;serializeJson(data,serialized);store.enqueue(e);disk.budget=serialized.length();store.tick(25000000);assert(store.queued()==1);disk.budget=100000;store.tick(30000000);assert(store.totals(false,"").total==3);
+ disk.capacity=disk.bytes.length()+1;e.id=4;store.enqueue(e);store.tick(35000000);assert(store.queued()==1);
+ for(unsigned i=5;i<14;i++){e.id=i;store.enqueue(e);}assert(store.queued()==8);assert(store.lostEvents==2);
+ assert(legacyDisk.bytes=="preserved-old-history");assert(cfg.ensureIdAbove(100));assert(cfg.reserveId()==101);disk.mounted=false;EventStorage missing;assert(!missing.begin(nullptr));assert(!missing.mounted());
+ // Multiple pages and IDs beyond JavaScript's exact integer range.
+ disk=FakeDisk{};EventStorage pages;assert(pages.begin(nullptr));
+ for(unsigned i=0;i<66;i++){Event row;row.id=9007199254740993ULL+i;row.closed=true;row.validated=true;assert(pages.enqueue(row));pages.tick((i+1)*5000000ULL);}
+ uint64_t cursor=0;unsigned total=0;do{cursor=pages.page(cursor,20,[&](JsonDocument& d){assert(d["sessionId"].is<const char*>());total++;},more);}while(more);assert(total==66);assert(cursor==9007199254741058ULL);
+ EventStorage pageBoot;assert(pageBoot.begin(nullptr));assert(pageBoot.observed==66);
+ puts("PASS storage: config isolation/reboot/failure, validation+close, dates, partial writes, retry dedup, boot interruption, queue and capacity");
 }

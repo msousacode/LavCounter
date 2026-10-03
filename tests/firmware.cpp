@@ -1,42 +1,42 @@
-#include <stdlib.h>
-#include <new>
-void* operator new(size_t n){void* p=malloc(n);if(!p)abort();return p;}
-void operator delete(void* p) noexcept{free(p);}
-void operator delete(void* p,size_t) noexcept{free(p);}
-#include "../firmware/LavCounter/LavCounter.ino"
 #include <assert.h>
-void pulseAt(uint64_t at){fakeTime=at;onPulse();serviceFlow();}
+#include <stdio.h>
+#include "../firmware/LavCounter/LavCounter.ino"
+void samples(uint16_t mm,unsigned n){VL53L1X::mm=mm;for(unsigned i=0;i<n;i++){fakeTime+=100000;servicePresence();}}
 int main(){
- lav::Date date;assert(lav::parseDate("2026-09-25T12:00:00",date));lav::encodeRtc(date,Wire.registers);
- setup();assert(rtc.valid());assert(server.routeCount==7);
- // Every registered route, including the HTML, must challenge before touching data.
- for(unsigned i=0;i<server.routeCount;i++){server.code=0;server.routes[i].handler();assert(server.code==401);}
- server.notFound();assert(server.code==401);assert(settings.current.revision==1);
- server.allowed=true;getConfig();assert(server.code==200);JsonDocument d;assert(!deserializeJson(d,server.response));assert(d["fields"].size()==lav::FIELD_COUNT);
- pulseAt(1000000);assert(detector.active);assert(current.config.revision==1);pulseAt(2000000);assert(detector.metrics.flowUs==1000000);
- // Set all configuration values through the production HTTP handler while active.
- JsonDocument body;body["revision"]=1;lav::Config modified=settings.current;for(size_t i=0;i<lav::FIELD_COUNT;i++)modified.v[i]+=lav::FIELDS[i].step;modified.v[lav::TIMEOUT]=10;modified.v[lav::WASH_VOLUME]=12;configJson(body["values"].to<JsonObject>(),modified);serializeJson(body,server.plain);setConfig();if(server.code!=200)fprintf(stderr,"%s\n",server.response.c_str());assert(server.code==200);assert(settings.current.revision==2);assert(detector.config.v[lav::TIMEOUT]==180);
- ConfigStore reboot;assert(reboot.begin());assert(reboot.current.v[lav::TIMEOUT]==10);for(size_t i=0;i<lav::FIELD_COUNT;i++)assert(fabs(reboot.current.v[i]-modified.v[i])<1e-9);
- // Clock changes cannot alter detector duration or original timestamps.
- String started=current.startedAt;server.plain="{\"dateTime\":\"2026-09-24T12:00:00\"}";setRtc();assert(server.code==200);pulseAt(3000000);assert(detector.metrics.durationUs()==2000000);assert(current.startedAt==started.c_str());
- // Exactly at timeout: old event closes once; pulse starts with new config.
- pulseAt(183000000);assert(history.queued()==1);assert(detector.metrics.pulses==1);assert(detector.config.v[lav::TIMEOUT]==10);assert(current.config.revision==2);
- history.tick(fakeTime);assert(history.queued()==0);getSessions();assert(server.code==200);assert(!deserializeJson(d,server.response));assert(d["events"].size()==1);assert(d["events"][0]["clockAdjusted"]==true);assert(d["events"][0]["durationMs"]==2000);
- fakeTime=193000000;serviceFlow();assert(!detector.active);assert(history.queued()==1);serviceFlow();assert(history.queued()==1);
- // Invalid changes do not mutate persisted config; stale tabs receive conflict.
- body["revision"]=2;body["values"]["timeoutSeconds"]=0;serializeJson(body,server.plain);setConfig();assert(server.code==400);assert(settings.current.v[lav::TIMEOUT]==10);
- body["revision"]=1;serializeJson(body,server.plain);setConfig();assert(server.code==409);
- // Missing and failed RTC reads are explicit, while pulse acquisition continues.
- Wire.fail=true;assert(!rtc.poll(fakeTime));assert(!rtc.valid());pulseAt(194000000);assert(detector.active);assert(current.startedAt.isEmpty());Wire.fail=false;
- server.plain="{\"dateTime\":\"2023-02-29T00:00\"}";setRtc();assert(server.code==400);
- // Overflow in the production queue marks acquisition degraded.
- for(unsigned i=0;i<4200;i++){fakeTime+=2000;onPulse();}serviceFlow();assert(detector.metrics.degraded);assert(observedLost>0);
- printf("PASS: production firmware handlers with fake transport/hardware: every route auth, live calibration/reboot, clock adjustment, exact timeout, RTC failure, queue overflow\n");
+ // Check every physical output, both blink phases, and exclusive colors.
+ pinValues[5]=-1;
+ const lav::State states[]={lav::State::WaitClear,lav::State::Idle,lav::State::Candidate,lav::State::ValidWash};
+ const bool healthValues[]={false,true};
+ const uint64_t phases[]={0,499999,500000,999999,1000000};
+ for(auto state:states){
+  for(bool healthy:healthValues)for(uint64_t at:phases){
+   updateLeds(state,healthy,at);
+   bool lit=(healthy&&state!=lav::State::WaitClear)||at<500000||at>=1000000;
+   assert(pinValues[25]==(lit&&(state==lav::State::Idle||state==lav::State::WaitClear)));
+   assert(pinValues[18]==(lit&&state==lav::State::Candidate));
+   assert(pinValues[19]==(lit&&state==lav::State::ValidWash));
+   assert(pinValues[25]+pinValues[18]+pinValues[19]<=1);
+  }
+ }
+ assert(pinValues[5]==-1);
+ setup();for(unsigned i=0;i<server.routeCount;i++){server.allowed=false;server.routes[i].handler();assert(server.code==401);}server.allowed=true;server.plain="{\"dateTime\":\"2026-10-01T12:00:00\"}";setRtc();assert(server.code==200);
+ lav::Config c;c.v[lav::WASH_SECONDS]=1;c.v[lav::ABSENCE_SECONDS]=1;assert(settings.save(c));
+ samples(2000,11);assert(detector.state()==lav::State::Idle);assert(pinValues[25]==1&&pinValues[18]==0&&pinValues[19]==0);
+ samples(1000,1);assert(detector.active());assert(pinValues[25]==0&&pinValues[18]==1&&pinValues[19]==0);
+ samples(1000,10);assert(detector.validated);assert(history.observed==1);assert(pinValues[25]==0&&pinValues[18]==0&&pinValues[19]==1);
+ samples(1000,20);assert(history.observed==1);getStatus();JsonDocument d;assert(!deserializeJson(d,server.response));assert(d["state"]=="VALID_WASH");assert(d["observedWashes"]==1);assert(d["distanceMm"]==1000);assert(d["rateLpm"].isNull());
+ JsonDocument body;body["revision"]=settings.current.revision;c.v[lav::WASH_SECONDS]=2;configJson(body["values"].to<JsonObject>(),c);serializeJson(body,server.plain);setConfig();assert(server.code==200);assert(detector.config.v[lav::WASH_SECONDS]==1);
+ String started=current.startedAt;server.plain="{\"dateTime\":\"2026-10-02T12:00:00\"}";setRtc();assert(server.code==200);assert(current.startedAt==started.c_str());serializeJson(body,server.plain);setConfig();assert(server.code==409);body["revision"]=settings.current.revision;body["values"]["washMinSeconds"]=0;serializeJson(body,server.plain);setConfig();assert(server.code==400);
+ samples(2000,5);VL53L1X::status=VL53L1X::Invalid;samples(2000,1);assert(detector.active());VL53L1X::status=VL53L1X::RangeValid;samples(2000,10);assert(detector.active());samples(2000,1);assert(!detector.active());assert(history.queued()==2);
+ fakeTime+=5000000;history.tick(fakeTime);fakeTime+=5000000;history.tick(fakeTime);getSessions();assert(server.code==200);assert(!deserializeJson(d,server.response));assert(d["events"].size()==1);assert(d["events"][0]["validated"]==true);assert(d["events"][0]["clockAdjusted"]==true);
+ server.category="washing";getSessions();assert(server.code==400);server.category="";server.cursor="18446744073709551616";getSessions();assert(server.code==400);server.cursor="";
+ VL53L1X::available=false;samples(1000,6);assert(!sensor.healthy);getStatus();assert(!deserializeJson(d,server.response));assert(d["distanceMm"].isNull());
+ VL53L1X::connected=false;samples(1000,1);assert(!sensor.healthy);VL53L1X::connected=true;VL53L1X::available=true;samples(1000,60);assert(sensor.healthy);
+ Wire.fail=true;assert(!rtc.poll(fakeTime));getStatus();assert(!deserializeJson(d,server.response));assert(d["todayWashes"].isNull());
+ PresenceSensor boundary;VL53L1X::connected=true;VL53L1X::available=true;assert(boundary.begin(0));lav::Sample sample;
+ VL53L1X::mm=1500;assert(boundary.poll(100000,sample,1500));assert(sample==lav::Sample::Present);
+ VL53L1X::mm=1501;assert(boundary.poll(200000,sample,1500));assert(sample==lav::Sample::Absent);
+ VL53L1X::timedOut=true;assert(boundary.poll(300000,sample,1500));assert(sample==lav::Sample::Unknown);VL53L1X::timedOut=false;
+ VL53L1X::connected=false;PresenceSensor absent;assert(!absent.begin(0));assert(absent.poll(100000,sample,1500));assert(sample==lav::Sample::Unknown);
+ puts("PASS firmware: authentication, API v2, one count, snapshot, validation/conflict, sensor invalid/stale/disconnect/recovery, RTC failure");
 }
-
-
-
-
-
-
-
