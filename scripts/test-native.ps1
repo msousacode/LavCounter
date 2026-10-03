@@ -17,4 +17,8 @@ try {
  if($LASTEXITCODE -ne 0){throw 'Compilação de testes de integração falhou.'}
  & build/firmware-tests.exe
  if($LASTEXITCODE -ne 0){throw 'Testes de integração falharam.'}
+ & $Zig @flags @jsonFlags tests/mock-firmware.cpp -o build/mock-firmware-tests.exe
+ if($LASTEXITCODE -ne 0){throw 'Compilação de testes mock falhou.'}
+ & build/mock-firmware-tests.exe
+ if($LASTEXITCODE -ne 0){throw 'Testes mock falharam.'}
 } finally {Pop-Location}

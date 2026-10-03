@@ -6,12 +6,15 @@ Todas as rotas exigem HTTP Basic (`lavcounter` / `lav123`), inclusive consultas 
 | --- | --- |
 | GET / | Painel autocontido |
 | GET /api/status | schemaVersion=2, source=local, state, distanceMm (null se inválida), sensorHealthy, sensorError, ledColor, ledBlinking, session |
+| POST /api/mock-sensor | Somente firmware mock: sample=present/absent/fault; 200 confirma entrada, 400 rejeita corpo inválido, 404 no físico |
 | GET /api/config | values, defaults, revision, fields com unidade/limites/ajuda, error |
 | POST /api/config | revision e values com os três parâmetros inteiros |
 | GET/POST /api/rtc | valid, dateTime e error; escrita recebe dateTime local YYYY-MM-DDTHH:mm:ss, 2000–2099 |
 | GET /api/sessions | events consolidados, nextCursor como string, hasMore, degraded; limit 1–50 (padrão 20), cursor inicial 0 |
 
 Status inclui observedWashes, persistedWashes, todayWashes (null se RTC inválido), undatedWashes, queuedEvents, lostEvents, storageError, storageDegraded e uso/capacidade. O total observado inclui validações vistas nesta execução e as recuperadas no boot. O total persistido só inclui registros confirmados. Contagem diária e sem data incluem registros persistidos e em fila; perdas explicitamente sinalizadas podem torná-las incompletas. A passagem da fila ao disco não aumenta a contagem novamente. A data é a da validação, não a do encerramento. Dados sem data não são atribuídos retroativamente ao dia atual.
+
+Status também inclui `sensorMode` (`physical`/`mock`) e `mockSample` (`present`/`absent`/`fault`, ou `null` no físico). No mock, `distanceMm` é `null`; `source` continua `local`. Sessões incluem `sensorMode`, inclusive registros físicos antigos normalizados na leitura. Histórico, totais, configuração e IDs são separados por modo. Consulte [contrato e exemplos da simulação](MOCK-SENSOR.md).
 
 Exemplo de configuração (use a revisão recebida, não uma constante):
 

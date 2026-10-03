@@ -2,6 +2,7 @@
  #include <ArduinoJson.h>
 #include <Preferences.h>
 #include "Detection.h"
+#include "BuildConfig.h"
 
 inline void configJson(JsonObject obj,const lav::Config& c){
  obj["revision"]=c.revision;
@@ -36,8 +37,8 @@ class ConfigStore {
  Preferences prefs; bool ready=false;
 public:
  lav::Config current; String error;
- bool begin(){
-  ready=prefs.begin("lavcounter",false);if(!ready){error="Não foi possível abrir a configuração.";return false;}
+ bool begin(const char* name=lav::CONFIG_NAMESPACE){
+  ready=prefs.begin(name,false);if(!ready){error="Não foi possível abrir a configuração.";return false;}
   String saved=prefs.getString("presenceConfig","");if(saved.isEmpty())return true;
   JsonDocument d,errors;
   if(deserializeJson(d,saved)||!parseConfig(d.as<JsonVariantConst>(),current,errors.to<JsonObject>())){current=lav::Config{};error="Configuração inválida; padrões carregados. Salve para corrigir.";return false;}

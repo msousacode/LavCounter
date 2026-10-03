@@ -6,7 +6,7 @@ struct Event {
  String startedAt,validatedAt,closedAt;bool clockAdjusted=false,validated=false,closed=false;
  void json(JsonDocument& d)const{
   auto o=d.to<JsonObject>();char idText[24];snprintf(idText,sizeof(idText),"%llu",(unsigned long long)id);
-  o["sessionId"]=idText;o["schemaVersion"]=2;o["firmwareVersion"]=lav::VERSION;
+  o["sessionId"]=idText;o["schemaVersion"]=2;o["firmwareVersion"]=lav::VERSION;o["sensorMode"]=lav::SENSOR_MODE;
   o["type"]=closed?"closed":validated?"validated":"candidate";o["validated"]=validated;
   if(startedAt.length())o["startedAt"]=startedAt;else o["startedAt"]=nullptr;
   if(validatedAt.length())o["validatedAt"]=validatedAt;else o["validatedAt"]=nullptr;

@@ -1,4 +1,9 @@
 #pragma once
+#include "BuildConfig.h"
+#if LAVCOUNTER_SENSOR_MOCK
+#include "MockPresenceSensor.h"
+using PresenceSensor=MockPresenceSensor;
+#else
 #include <VL53L1X.h>
 #include "Detection.h"
 class PresenceSensor {
@@ -21,3 +26,4 @@ public:
   return false;
  }
 };
+#endif

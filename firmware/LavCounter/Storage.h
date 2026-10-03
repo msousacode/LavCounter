@@ -4,7 +4,7 @@
 #include "Event.h"
 // Journal is ordered by increasing reserved session ID. Two records per session.
 class EventStorage {
- static constexpr const char* PATH="/presence-v2.jsonl";
+ const char* PATH;
  static constexpr size_t MAX_LINE=4096;
  bool ready=false,retrying=false;String pending[8];unsigned count=0;uint64_t lastAttempt=0,bootMax=0,lastObserved=0;
  void (*service)()=nullptr;
@@ -26,6 +26,7 @@ class EventStorage {
   if(bytes!=value.length()||newline!=1){degraded=true;error="Gravação incompleta; registro pendente.";return false;}return true;
  }
 public:
+ explicit EventStorage(const char* path=lav::JOURNAL_PATH):PATH(path){}
  String error;bool degraded=false;uint32_t lostEvents=0;uint64_t observed=0;
  struct Totals {uint64_t total=0,today=0,undated=0;};
  bool begin(void (*callback)()){
@@ -51,7 +52,7 @@ public:
  // Constant memory streaming consolidation; late/out-of-order journal entries are rejected.
  template<class Visit> void scan(bool withPending,Visit visit){
   JsonDocument merged;uint64_t currentId=0;bool closed=false;
-  auto emit=[&](){if(!currentId)return;merged["interrupted"]=!closed&&currentId<=bootMax;visit(merged);};
+  auto emit=[&](){if(!currentId)return;if(merged["sensorMode"].isNull())merged["sensorMode"]="physical";merged["interrupted"]=!closed&&currentId<=bootMax;visit(merged);};
   records(withPending,[&](JsonDocument& d){uint64_t id=idOf(d);if(id<currentId){degraded=true;return;}bool nextClosed=d["type"]=="closed";
    if(id!=currentId){emit();currentId=id;closed=nextClosed;merged.set(d);}
    else if(nextClosed&&!closed){merged.set(d);closed=true;}

@@ -18,7 +18,11 @@ arduino-cli lib install ArduinoJson@7.4.2 VL53L1X@1.3.1
 ./scripts/build.ps1
 ```
 
-O script aceita -ArduinoCli e registra build/compile.log. O perfil sketch.yaml fixa as dependências. Edite web/index.html e execute node scripts/embed-web.cjs; não edite WebPage.h manualmente.
+O script aceita `-ArduinoCli` e registra `build/compile-physical.log`, com binários em `build/firmware-physical`. O perfil sketch.yaml fixa as dependências. Edite web/index.html e execute node scripts/embed-web.cjs; não edite WebPage.h manualmente.
+
+### Testar sem o sensor
+
+Compile com `./scripts/build.ps1 -MockSensor` ou habilite `LAVCOUNTER_SENSOR_MOCK` em `BuildConfig.h` pela IDE. Após carregar esse firmware, o painel oferece **Veículo presente**, **Box vazio** e **Falha do sensor**, respeitando os tempos configurados. Dados de teste ficam separados dos físicos. Consulte [ativação, API e roteiro do mock](docs/MOCK-SENSOR.md).
 
 ### Compilar pela Arduino IDE
 

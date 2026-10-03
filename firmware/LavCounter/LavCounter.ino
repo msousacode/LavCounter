@@ -45,8 +45,14 @@ void getStatus(){
  if(!authenticated())return;servicePresence();JsonDocument d;
  String date=rtc.at(esp_timer_get_time());auto saved=history.totals(false,date.c_str());auto all=history.totals(true,date.c_str());auto state=detector.state();
  d["schemaVersion"]=2;d["product"]="LavCounter";d["firmwareVersion"]=lav::VERSION;d["source"]="local";
+ d["sensorMode"]=lav::SENSOR_MODE;
+#if LAVCOUNTER_SENSOR_MOCK
+ d["mockSample"]=sensor.sampleName();
+#else
+ d["mockSample"]=nullptr;
+#endif
  d["state"]=lav::stateName(state);d["sensorHealthy"]=sensor.healthy;d["sensorError"]=sensor.error;
- if(sensor.healthy)d["distanceMm"]=sensor.distanceMm;else d["distanceMm"]=nullptr;
+ if(sensor.healthy&&!lav::SENSOR_MOCK)d["distanceMm"]=sensor.distanceMm;else d["distanceMm"]=nullptr;
  d["ledColor"]=lav::ledColor(state);d["ledBlinking"]=!sensor.healthy||state==lav::State::WaitClear;
  d["observedWashes"]=history.observed;d["persistedWashes"]=saved.total;
  if(rtc.valid())d["todayWashes"]=all.today;else d["todayWashes"]=nullptr;
@@ -57,6 +63,21 @@ void getStatus(){
  sendJson(200,d);
 }
 void getConfig(){if(!authenticated())return;JsonDocument d;settings.describe(d);sendJson(200,d);}
+void setMockSensor(){
+ if(!authenticated())return;
+#if LAVCOUNTER_SENSOR_MOCK
+ JsonDocument d;
+ if(server.arg("plain").length()>128||deserializeJson(d,server.arg("plain"))||!d.is<JsonObject>()||d.size()!=1||!d["sample"].is<const char*>()){
+  errorResponse(400,"Envie somente sample: present, absent ou fault.");return;
+ }
+ // Process the previous sample before accepting a new input; never set detector state here.
+ servicePresence();
+ if(!sensor.select(d["sample"].as<const char*>())){errorResponse(400,"Entrada simulada inválida.");return;}
+ d.clear();d["sensorMode"]=lav::SENSOR_MODE;d["mockSample"]=sensor.sampleName();sendJson(200,d);
+#else
+ errorResponse(404,"Simulação não habilitada neste firmware.");
+#endif
+}
 void setConfig(){
  if(!authenticated())return;servicePresence();JsonDocument input,result;
  if(server.arg("plain").length()>4096||deserializeJson(input,server.arg("plain"))){errorResponse(400,"Configuração inválida.");return;}
@@ -91,6 +112,7 @@ void setup(){
  WiFi.softAP("LavCounter","lavcounter123");MDNS.begin("lavcounter");
  server.on("/",HTTP_GET,[]{if(authenticated()){server.sendHeader("Cache-Control","no-store");server.send_P(200,"text/html; charset=utf-8",WEB_PAGE);}});
  server.on("/api/status",HTTP_GET,getStatus);server.on("/api/config",HTTP_GET,getConfig);server.on("/api/config",HTTP_POST,setConfig);
+ server.on("/api/mock-sensor",HTTP_POST,setMockSensor);
  server.on("/api/rtc",HTTP_GET,getRtc);server.on("/api/rtc",HTTP_POST,setRtc);server.on("/api/sessions",HTTP_GET,getSessions);
  server.onNotFound([]{if(authenticated())errorResponse(404,"Recurso não encontrado.");});server.begin();history.setService(servicePresence);
 }

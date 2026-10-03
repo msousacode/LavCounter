@@ -1,4 +1,7 @@
 #pragma once
+#if LAVCOUNTER_SENSOR_MOCK
+#error Mock firmware must not include the physical driver
+#endif
 #include "Arduino.h"
 class VL53L1X {
 public:

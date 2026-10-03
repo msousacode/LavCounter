@@ -39,4 +39,5 @@ int main(){
  VL53L1X::timedOut=true;assert(boundary.poll(300000,sample,1500));assert(sample==lav::Sample::Unknown);VL53L1X::timedOut=false;
  VL53L1X::connected=false;PresenceSensor absent;assert(!absent.begin(0));assert(absent.poll(100000,sample,1500));assert(sample==lav::Sample::Unknown);
  puts("PASS firmware: authentication, API v2, one count, snapshot, validation/conflict, sensor invalid/stale/disconnect/recovery, RTC failure");
+ setMockSensor();assert(server.code==404);getStatus();assert(!deserializeJson(d,server.response));assert(d["sensorMode"]=="physical"&&d["mockSample"].isNull());
 }
