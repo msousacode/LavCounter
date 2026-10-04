@@ -56,3 +56,9 @@ No firmware privado de integração, `GET /api/cloud-sync` também informa `test
 `POST /api/cloud-wifi` aceita somente `ssid` e `password` como strings. SSID tem de 1 a 32 bytes UTF-8; senha de 8 a 63 bytes ou vazia para rede aberta. Retorna 202 após persistir os dois campos em um único registro NVS no namespace `lavWifi`, 400 para entrada inválida e 500 para falha de gravação. A senha não aparece nas respostas. A rede salva é comum aos perfis físico/simulado, tem prioridade sobre o arquivo privado e é reutilizada no boot. A tentativa de conexão é iniciada pelo loop após responder ao painel, mantendo o AP LavCounter ativo.
 
 Sem Wi-Fi externo, Sincronizar com a nuvem abre o formulário de rede e senha. Conectar e sincronizar aguarda conexão e autorização Firebase; o coordenador dispara o envio ao conectar. Configurar Wi-Fi permite corrigir ou trocar a rede. AP+STA pode mudar de canal e desconectar momentaneamente o navegador: reconecte ao LavCounter e reabra o painel; a conexão e sincronização continuam no aparelho.
+
+## Formatos de exibição
+
+O painel usa `dd/MM/YYYY HH:mm` para início, encerramento, validação, relógio local, última sincronização e expiração da autorização. Datas do RTC são exibidas sem conversão de fuso; a expiração UTC é exibida em America/Sao_Paulo. Duração no histórico e na sessão ativa usa `hh:mm:ss`, descartando a fração de segundo e preservando horas acima de 24. O formulário do relógio recebe o mesmo formato brasileiro, valida o calendário e envia a representação ISO local com segundos zero. APIs, histórico e Firestore mantêm seus formatos originais e a precisão armazenada.
+
+Eventos: Sessão / Início, Encerramento, Duração, Resultado, Validação.
