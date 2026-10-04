@@ -3,7 +3,7 @@
 #define FILE_READ 0
 #define FILE_APPEND 1
 struct FakeDisk {String bytes;bool mounted=true,failOpen=false;size_t budget=1000000,capacity=1000000;};
-inline FakeDisk disk,legacyDisk,mockDisk;
+inline FakeDisk disk,legacyDisk,mockDisk,cloudDisk,cloudMockDisk;
 class File {
  FakeDisk* target=nullptr;bool valid=false;size_t pos=0;bool writing=false;
 public:
@@ -22,11 +22,11 @@ public:
 };
 struct FakeSPIFFS {
  bool begin(bool format){if(format)abort();return disk.mounted;}
- FakeDisk& target(const char* path){assertPath(path);return strcmp(path,"/presence-v2.jsonl")==0?disk:strcmp(path,"/presence-mock-v2.jsonl")==0?mockDisk:legacyDisk;}
+ FakeDisk& target(const char* path){assertPath(path);return strcmp(path,"/presence-v2.jsonl")==0?disk:strcmp(path,"/presence-mock-v2.jsonl")==0?mockDisk:strcmp(path,"/cloud-v1.jsonl")==0?cloudDisk:strcmp(path,"/cloud-mock-v1.jsonl")==0?cloudMockDisk:legacyDisk;}
  File open(const char* path,int mode){return File(target(path),mode==FILE_APPEND);}
- void assertPath(const char* p){if(strcmp(p,"/presence-v2.jsonl")&&strcmp(p,"/presence-mock-v2.jsonl")&&strcmp(p,"/events-v1.jsonl"))abort();}
+ void assertPath(const char* p){if(strcmp(p,"/presence-v2.jsonl")&&strcmp(p,"/presence-mock-v2.jsonl")&&strcmp(p,"/events-v1.jsonl")&&strcmp(p,"/cloud-v1.jsonl")&&strcmp(p,"/cloud-mock-v1.jsonl"))abort();}
  bool exists(const char* p){return target(p).bytes.length()>0;}
- size_t usedBytes()const{return disk.bytes.length()+legacyDisk.bytes.length()+mockDisk.bytes.length();}
+ size_t usedBytes()const{return disk.bytes.length()+legacyDisk.bytes.length()+mockDisk.bytes.length()+cloudDisk.bytes.length()+cloudMockDisk.bytes.length();}
  size_t totalBytes()const{return disk.capacity;}
 };
 inline FakeSPIFFS SPIFFS;

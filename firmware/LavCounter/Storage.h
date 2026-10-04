@@ -6,7 +6,7 @@
 class EventStorage {
  const char* PATH;
  static constexpr size_t MAX_LINE=4096;
- bool ready=false,retrying=false;String pending[8];unsigned count=0;uint64_t lastAttempt=0,bootMax=0,lastObserved=0;
+ bool ready=false,retrying=false;String pending[8];unsigned count=0;uint64_t lastAttempt=0,bootMax=0,lastObserved=0;uint64_t generation_=0;
  void (*service)()=nullptr;
  bool line(File& f,String& out){out="";bool over=false;while(f.available()){int c=f.read();if(c=='\n')return !over&&!out.isEmpty();if(out.length()<MAX_LINE)out+=(char)c;else over=true;if(service&&out.length()%128==0)service();}if(out.length())degraded=true;return false;}
  static uint64_t idOf(JsonDocument& d){const char* s=d["sessionId"]|"";if(!*s)return 0;uint64_t id=0;for(;*s;s++){if(*s<'0'||*s>'9'||id>(UINT64_MAX-(*s-'0'))/10)return 0;id=id*10+(*s-'0');}return id;}
@@ -45,10 +45,40 @@ public:
  void tick(uint64_t now){
   if(!count||(retrying&&now-lastAttempt<5000000))return;lastAttempt=now;
   if(!append(pending[0])){retrying=true;return;}retrying=false;
-  for(unsigned i=1;i<count;i++)pending[i-1]=pending[i];pending[--count]="";error="";
+  for(unsigned i=1;i<count;i++)pending[i-1]=pending[i];pending[--count]="";error="";generation_++;
  }
  unsigned queued()const{return count;}bool mounted()const{return ready;}
  size_t used()const{return ready?SPIFFS.usedBytes():0;}size_t capacity()const{return ready?SPIFFS.totalBytes():0;}
+ uint64_t generation()const{return generation_;}
+ // At most 256 bytes of file input per step, captured durable boundary, no RAM queue.
+ // Caller owns cursor exclusively on the main loop; cloud worker never accesses files.
+ struct DurableCursor {File file;size_t boundary=0;String row;JsonDocument merged;uint64_t id=0;bool closed=false,over=false,done=false,failed=false;};
+ bool startDurable(DurableCursor& c){
+  c.file.close();c.row="";c.merged.clear();c.id=0;c.closed=false;c.over=false;c.done=false;c.failed=false;c.boundary=0;
+  if(!ready){c.done=c.failed=true;return false;}c.file=SPIFFS.open(PATH,FILE_READ);
+  if(!c.file){c.done=true;c.failed=SPIFFS.exists(PATH);if(c.failed){degraded=true;error="Falha ao ler histórico.";}return !c.failed;}
+  c.boundary=c.file.size();return true;
+ }
+ // returns true only when one consolidated session is available in out.
+ bool durableStep(DurableCursor& c,JsonDocument& out){
+  if(c.done)return false;
+  auto emit=[&](){out.set(c.merged);if(out["sensorMode"].isNull())out["sensorMode"]="physical";out["interrupted"]=!c.closed&&c.id<=bootMax;};
+  unsigned budget=256;
+  while(budget--&&c.file.position()<c.boundary){
+   int ch=c.file.read();if(ch<0){c.failed=true;degraded=true;break;}
+   if(ch!='\n'){if(c.row.length()<MAX_LINE)c.row+=(char)ch;else c.over=true;continue;}
+   JsonDocument d;bool valid=!c.over&&!c.row.isEmpty()&&parse(c.row,d);c.row="";c.over=false;
+   if(!valid){degraded=true;c.failed=true;continue;}
+   uint64_t id=idOf(d);if(id<c.id){degraded=true;c.failed=true;continue;}
+   bool closed=d["type"]=="closed";
+   if(id!=c.id){bool have=c.id!=0;if(have)emit();c.id=id;c.closed=closed;c.merged.set(d);if(service)service();if(have)return true;}
+   else if(closed&&!c.closed){c.closed=true;c.merged.set(d);}
+  }
+  if(service)service();
+  if(c.file.position()>=c.boundary||!c.file.available()){
+   if(!c.row.isEmpty()||c.over){degraded=true;c.failed=true;}c.file.close();c.done=true;if(c.id){emit();c.id=0;return true;}
+  }return false;
+ }
  // Constant memory streaming consolidation; late/out-of-order journal entries are rejected.
  template<class Visit> void scan(bool withPending,Visit visit){
   JsonDocument merged;uint64_t currentId=0;bool closed=false;

@@ -4,6 +4,9 @@
 #include <string.h>
 #include <stdio.h>
 #include <math.h>
+void operator delete(void* p) noexcept {free(p);}
+void operator delete(void* p,size_t) noexcept {free(p);}
+extern "C" inline void __cxa_pure_virtual(){abort();}
 class String {
  char* value=nullptr;size_t length_=0;
 public:

@@ -1,0 +1,39 @@
+rules_version = '2';
+
+// Single-unit bench test: replace only the dedicated authentication UID.
+// Temporary grant expires at 2026-10-11 00:00 UTC (10/10, 21:00 Sao Paulo).
+// This file has NOT been published to Firebase.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function testAccess(clientId, deviceId) {
+      return request.auth != null
+        && request.auth.uid == 'REPLACE_AUTH_UID'
+        && clientId.matches('^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$')
+        && deviceId.matches('^esp32-[0-9a-f]{12}$')
+        && request.time < timestamp.date(2026, 10, 11);
+    }
+
+    match /clients/{clientId}/devices/{deviceId}/modes/{mode}/sessions/{sessionId} {
+      function validSession() {
+        let d = request.resource.data;
+        return mode in ['physical', 'mock']
+          && sessionId.matches('^[1-9][0-9]{0,19}$')
+          && d.clientId == clientId && d.deviceId == deviceId
+          && d.sensorMode == mode && d.sessionId == sessionId
+          && d.schemaVersion == 2 && d.cloudSchemaVersion == 1
+          && d.validated == true
+          && d.syncRevision is string && d.syncRevision.matches('^[0-9a-f]{64}$')
+          && d.syncStage is int
+          && ((d.syncStage == 1 && d.type == 'validated' && d.interrupted == false)
+            || (d.syncStage == 2 && d.type == 'validated' && d.interrupted == true)
+            || (d.syncStage == 3 && d.type == 'closed' && d.interrupted == false));
+      }
+      allow get, list: if testAccess(clientId, deviceId);
+      allow create: if testAccess(clientId, deviceId) && validSession();
+      allow update: if testAccess(clientId, deviceId) && validSession()
+        && (request.resource.data.syncStage > resource.data.syncStage
+          || request.resource.data == resource.data);
+      // Deletes and all other paths remain denied. Never share the test credential.
+    }
+  }
+}

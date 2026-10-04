@@ -8,3 +8,5 @@
 *.bin
 *.elf
 *.map
+/firmware/LavCounter/CloudPrivate.h
+/firmware/LavCounter/CloudCredentials.h

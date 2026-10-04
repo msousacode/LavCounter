@@ -35,3 +35,24 @@ A fila contém até oito registros; grava um registro por passagem do loop e rep
 ## Migração e rollback
 
 Antes de atualizar uma unidade, exporte o histórico pela API antiga e preserve firmware, SPIFFS e NVS. A nova chave `presenceConfig` não interpreta a chave antiga `config`. A sequência nextId é mantida e conferida contra o maior ID do novo histórico. O firmware anterior pode voltar a usar os dados preservados; registros por presença não são convertidos em registros hidráulicos. Não apague NVS isoladamente. Dispositivos sem SPIFFS precisam de inicialização explícita conforme sua tabela de partições, após backup.
+# Nuvem e Premium
+
+Todas as novas rotas exigem o mesmo HTTP Basic local. `GET /api/cloud-sync` retorna identidade, configured, wifiConnected, premiumStatus, state, lastError sanitizado, pendingVersions/confirmedVersions, countsComplete e lastCompletedAt (null sem RTC confiável). Contadores completos descrevem apenas a revisão atual de cada sessão. Durante varredura, são null; cycleConfirmed/cyclePending mostram o andamento parcial. Um envio aceito não comprova sucesso remoto.
+
+`POST /api/cloud-sync` aceita corpo vazio ou `{}` sem destino/IDs/flag premium: 202 solicitado, 200 trabalho existente, 403 premium não autorizado, 503 configuração/conectividade/identidade indisponível, 400 parâmetros. `GET /api/premium-link` retorna URL HTTPS com clientId/deviceId persistidos ou 503 com motivo. Premium inativo não bloqueia cadastro; URL base ainda não fornecida é indisponível. Nenhuma senha/token segue na URL; não existe código temporário de ativação.
+
+Fonte de upload: journal v2 durável, não fila RAM. Ciclo captura limite do arquivo, consolida validação/encerramento e usa SHA-256 da serialização canônica do snapshot como syncRevision. Journals adicionais `/cloud-v1.jsonl` e `/cloud-mock-v1.jsonl` guardam version=1, binding, sessionId textual, revision e checksum SHA-256 canônico desses campos. Somente resposta REST 2xx completa, com nome e revisão correspondentes, seguida de gravação da confirmação permite considerar a versão confirmada. Falha na gravação mantém pendência e reenvia o mesmo documento. Truncamento/corrupção de confirmação causa reenvio conservador; não há limpeza/formatação automática. A falta de espaço é visível e exige preservação/exportação e manutenção explícita.
+
+Boot de sessão validada sem encerramento deriva interrupted=true sem inventar closedAt; isso é uma nova revisão remota. Encerramento após envio da validação permanece pendente mesmo com mesmo sessionId. Histórico hidráulico é preservado sem upload; modos físico/mock têm documentos, journals e vínculos separados. Consulte [NUVEM.md](NUVEM.md) para configuração e contrato futuro de autorização.
+
+O payload Firestore inclui syncStage inteiro (1 validada, 2 interrompida, 3 encerrada). O contrato de regras/backend exige progressão monotônica e equivalência da revisão para reenvio no mesmo stage; isso impede escrita antiga atrasada de regredir sessão já encerrada.
+
+No firmware privado de integração, `GET /api/cloud-sync` também informa `testMode`, `testUntil` (segundos UTC) e `authUid` (identificador público do usuário de bancada). A autorização de teste substitui apenas a exigência de compra/premium remoto durante o prazo explícito; autenticação Firebase, vínculo ao aparelho, TLS, confirmação durável e regras Firestore continuam obrigatórios. `POST /api/cloud-sync` não aceita parâmetros para liberar ou prolongar o teste. Sem configuração privada, `testMode=false`, `testUntil=0` e `authUid=""`. Consulte [NUVEM.md](NUVEM.md) para preparação, publicação das regras e encerramento do teste.
+
+## Wi-Fi externo pelo painel
+
+`GET /api/cloud-wifi` exige HTTP Basic e informa `wifiConfigured`, `wifiConnected`, `wifiSsid`, `wifiState` (`not_configured`, `connecting`, `connected`, `error`) e `wifiError`. Esses campos também aparecem em `GET /api/cloud-sync`. Conexão Wi-Fi não comprova acesso à internet; autenticação/TLS e envio ao Firebase têm diagnóstico próprio.
+
+`POST /api/cloud-wifi` aceita somente `ssid` e `password` como strings. SSID tem de 1 a 32 bytes UTF-8; senha de 8 a 63 bytes ou vazia para rede aberta. Retorna 202 após persistir os dois campos em um único registro NVS no namespace `lavWifi`, 400 para entrada inválida e 500 para falha de gravação. A senha não aparece nas respostas. A rede salva é comum aos perfis físico/simulado, tem prioridade sobre o arquivo privado e é reutilizada no boot. A tentativa de conexão é iniciada pelo loop após responder ao painel, mantendo o AP LavCounter ativo.
+
+Sem Wi-Fi externo, Sincronizar com a nuvem abre o formulário de rede e senha. Conectar e sincronizar aguarda conexão e autorização Firebase; o coordenador dispara o envio ao conectar. Configurar Wi-Fi permite corrigir ou trocar a rede. AP+STA pode mudar de canal e desconectar momentaneamente o navegador: reconecte ao LavCounter e reabra o painel; a conexão e sincronização continuam no aparelho.

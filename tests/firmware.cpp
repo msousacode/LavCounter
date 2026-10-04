@@ -19,7 +19,9 @@ int main(){
   }
  }
  assert(pinValues[5]==-1);
- setup();for(unsigned i=0;i<server.routeCount;i++){server.allowed=false;server.routes[i].handler();assert(server.code==401);}server.allowed=true;server.plain="{\"dateTime\":\"2026-10-01T12:00:00\"}";setRtc();assert(server.code==200);
+ setup();for(unsigned i=0;i<server.routeCount;i++){server.allowed=false;server.routes[i].handler();assert(server.code==401);}server.allowed=true;
+ getCloudSync();JsonDocument cloudState;assert(server.code==200&&!deserializeJson(cloudState,server.response));assert(cloudState["state"]=="not_configured"&&cloudState["premiumStatus"]=="unknown");assert(cloudState["sensorMode"]=="physical");assert(lavcloud::uuid(cloudState["clientId"]|""));server.plain="{}";requestCloudSync();assert(server.code==503);getPremiumLink();assert(server.code==503);cloudConfig.signupUrl="https://saas.example/cadastro";getPremiumLink();assert(server.code==200&&!deserializeJson(cloudState,server.response));assert(cloudState["url"]==identity.premiumLink(cloudConfig).c_str());server.plain="{\"premium\":true}";requestCloudSync();assert(server.code==400);
+ server.plain="{\"dateTime\":\"2026-10-01T12:00:00\"}";setRtc();assert(server.code==200);
  lav::Config c;c.v[lav::WASH_SECONDS]=1;c.v[lav::ABSENCE_SECONDS]=1;assert(settings.save(c));
  samples(2000,11);assert(detector.state()==lav::State::Idle);assert(pinValues[25]==1&&pinValues[18]==0&&pinValues[19]==0);
  samples(1000,1);assert(detector.active());assert(pinValues[25]==0&&pinValues[18]==1&&pinValues[19]==0);

@@ -39,7 +39,13 @@ Rede **LavCounter**, senha **lavcounter123**. Acesse http://192.168.4.1 (mDNS la
 
 Painel: contagem observada, persistida, diária, sessão, distância, saúde do sensor, histórico e parametrização. Dados locais não dependem da futura camada SaaS; não há métricas financeiras nesta versão. RTC inválido deixa o diário indisponível, sem interromper a temporização monotônica.
 
-## Dados e atualização
+## Nuvem e Premium
+
+O aparelho gera `clientId` automaticamente na primeira inicialização e o mantém na NVS; `deviceId` usa o MAC de fábrica. A ação **Premium** abrirá o SaaS com esses IDs para associar a conta criada por e-mail/senha, sem código temporário. Sem autorização premium ativa, todas as sessões continuam apenas locais. Após ativar, o histórico persistido pode ser enviado ao Cloud Firestore automaticamente ou pelo botão **Sincronizar com a nuvem**.
+
+A integração começa sem acesso configurado: nenhum upload ocorre. URL SaaS, destino Firebase, Wi-Fi, CA e provedores de autenticação/premium serão informados posteriormente em `CloudPrivate.h`, ignorado pelo Git. Consulte [configuração e contratos da nuvem](docs/NUVEM.md). O SaaS, pagamento e provisionamento remoto não fazem parte deste firmware.
+
+## Histórico local
 
 A configuração usa presenceConfig em NVS; histórico usa /presence-v2.jsonl. Dados antigos são preservados e não entram nas contagens. Validação e encerramento compartilham ID. Faça backup de firmware, filesystem e NVS antes de atualizar uma unidade; veja [API, migração e rollback](docs/API.md).
 

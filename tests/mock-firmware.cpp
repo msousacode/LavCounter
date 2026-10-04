@@ -15,6 +15,7 @@ int main(){
  const String originalDisk=disk.bytes;
  setup();assert(settings.current.v[lav::WASH_SECONDS]==120);
  for(unsigned i=0;i<server.routeCount;i++){server.allowed=false;server.routes[i].handler();assert(server.code==401);}server.allowed=true;
+ JsonDocument cloudState;getCloudSync();assert(server.code==200&&!deserializeJson(cloudState,server.response));assert(cloudState["sensorMode"]=="mock"&&cloudState["state"]=="not_configured");assert(lavcloud::uuid(cloudState["clientId"]|""));server.plain="{}";requestCloudSync();assert(server.code==503);getPremiumLink();assert(server.code==503);
  lav::Config c;c.v[lav::WASH_SECONDS]=1;c.v[lav::ABSENCE_SECONDS]=1;assert(settings.save(c));
  assert(detector.state()==lav::State::WaitClear);ticks(10);assert(!detector.active());ticks(1);assert(detector.state()==lav::State::Idle);
  const char* invalid[]={"{}","[]","null","{\"sample\":1}","{\"sample\":\"other\"}","{\"sample\":\"present\",\"extra\":1}","{"};

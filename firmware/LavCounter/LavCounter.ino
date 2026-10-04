@@ -10,6 +10,9 @@
 #include "Storage.h"
 #include "PresenceSensor.h"
 #include "WebPage.h"
+#include "CloudSync.h"
+#include "CloudNetwork.h"
+#include "FirebaseTest.h"
 // Active-high indicators: GPIO -> LED with built-in resistor -> GND.
 constexpr int LED_RED_PIN=25;
 constexpr int LED_YELLOW_PIN=18;
@@ -21,6 +24,17 @@ void updateLeds(lav::State state,bool healthy,uint64_t now){
  digitalWrite(LED_GREEN_PIN,on&&state==lav::State::ValidWash);
 }
 WebServer server(80);ConfigStore settings;RtcClock rtc;EventStorage history;lav::Detector detector;PresenceSensor sensor;
+lavcloud::CloudConfig cloudConfig=lavcloud::defaultConfig();lavcloud::DeviceIdentity identity;
+#if defined(LAVCOUNTER_FIREBASE_TEST_ENABLED) && LAVCOUNTER_FIREBASE_TEST_ENABLED && defined(LAVCOUNTER_FIREBASE_REFRESH_TOKEN)
+lavcloud::EspTokenHttp cloudTokenHttp;
+lavcloud::FirebaseRefreshAuth defaultCloudAuth(cloudTokenHttp,LAVCOUNTER_FIREBASE_API_KEY,LAVCOUNTER_FIREBASE_CA,LAVCOUNTER_FIREBASE_REFRESH_TOKEN,LAVCOUNTER_FIREBASE_AUTH_UID,LAVCOUNTER_FIREBASE_PROJECT_NUMBER);
+lavcloud::TemporaryTestPremium defaultPremium("lavcounter","(default)",LAVCOUNTER_FIREBASE_TEST_UNTIL,identity);
+#else
+lavcloud::UnavailableAuth defaultCloudAuth;lavcloud::UnavailablePremium defaultPremium;
+#endif
+lavcloud::EspHttpBackend cloudHttp;
+lavcloud::FirestoreTransport cloudTransport(defaultCloudAuth,defaultPremium,cloudHttp);
+lavcloud::EspCloudWorker cloudWorker(cloudTransport);lavcloud::CloudSync cloudSync(cloudConfig,identity,history,cloudWorker);lavcloud::CloudNetwork cloudNetwork;
 Event current;uint32_t sessionClockRevision=0;uint64_t lastRtcPoll=0;bool ready=false,servicing=false;
 void servicePresence(){
  if(!ready||servicing)return;servicing=true;
@@ -63,6 +77,25 @@ void getStatus(){
  sendJson(200,d);
 }
 void getConfig(){if(!authenticated())return;JsonDocument d;settings.describe(d);sendJson(200,d);}
+void getCloudSync(){if(!authenticated())return;JsonDocument d;cloudSync.describe(d);cloudNetwork.describe(d);sendJson(200,d);}
+void getCloudWifi(){if(!authenticated())return;JsonDocument d;cloudNetwork.describe(d);sendJson(200,d);}
+void setCloudWifi(){
+ if(!authenticated())return;JsonDocument d;
+ if(server.arg("plain").length()>512||deserializeJson(d,server.arg("plain"))||!d.is<JsonObject>()||d.size()!=2||!d["ssid"].is<String>()||!d["password"].is<String>()){
+  errorResponse(400,"Envie o nome da rede e a senha.");return;
+ }
+ String name=d["ssid"].as<String>(),secret=d["password"].as<String>();
+ if(!lavcloud::CloudNetwork::valid(name,secret)){errorResponse(400,"Informe rede de até 32 bytes e senha de 8 a 63 caracteres (ou vazia para rede aberta).");return;}
+ if(!cloudNetwork.configure(name,secret,esp_timer_get_time())){errorResponse(500,cloudNetwork.error.c_str());return;}
+ d.clear();cloudNetwork.describe(d);sendJson(202,d);
+}
+void requestCloudSync(){
+ if(!authenticated())return;
+ if(server.arg("plain").length()&&server.arg("plain")!="{}"){errorResponse(400,"A sincronização não aceita parâmetros.");return;}
+ int code=cloudSync.request(esp_timer_get_time());JsonDocument d;cloudSync.describe(d);
+ if(code==403)d["error"]="Premium sem autorização ativa.";else if(code==503)d["error"]="Configuração, conexão ou identidade indisponível.";sendJson(code,d);
+}
+void getPremiumLink(){if(!authenticated())return;String url=identity.premiumLink(cloudConfig);if(url.isEmpty()){errorResponse(503,identity.valid()?"Cadastro premium indisponível: URL SaaS não configurada.":"Identidade indisponível para cadastro.");return;}JsonDocument d;d["url"]=url;d["clientId"]=identity.clientId;d["deviceId"]=identity.deviceId;sendJson(200,d);}
 void setMockSensor(){
  if(!authenticated())return;
 #if LAVCOUNTER_SENSOR_MOCK
@@ -103,17 +136,24 @@ void getSessions(){
  server.sendContent(String("],\"nextCursor\":\"")+b+"\",\"hasMore\":"+(more?"true":"false")+",\"degraded\":"+(history.degraded?"true":"false")+"}");server.sendContent("");
 }
 void setup(){
- Serial.begin(115200);settings.begin();Wire.begin(21,22);Wire.setTimeOut(20);rtc.poll(esp_timer_get_time());
+ Serial.begin(115200);identity.begin();settings.begin();Wire.begin(21,22);Wire.setTimeOut(20);rtc.poll(esp_timer_get_time());
  const int pins[]={LED_RED_PIN,LED_YELLOW_PIN,LED_GREEN_PIN};
  for(int p:pins){digitalWrite(p,LOW);pinMode(p,OUTPUT);}
  updateLeds(detector.state(),sensor.healthy,esp_timer_get_time());
  pinMode(26,OUTPUT);digitalWrite(26,HIGH);
  history.begin(nullptr);settings.ensureIdAbove(history.maxId());sensor.begin(esp_timer_get_time());ready=true;
- WiFi.softAP("LavCounter","lavcounter123");MDNS.begin("lavcounter");
+ cloudNetwork.begin(cloudConfig);MDNS.begin("lavcounter");
+#ifdef LAVCOUNTER_CLOUD_PROVIDERS
+ lavcloud::AuthProvider* auth=&defaultCloudAuth;lavcloud::PremiumProvider* premium=&defaultPremium;
+ LAVCOUNTER_CLOUD_PROVIDERS(auth,premium);if(auth&&premium)cloudTransport.providers(*auth,*premium);
+#endif
+ cloudSync.begin();
  server.on("/",HTTP_GET,[]{if(authenticated()){server.sendHeader("Cache-Control","no-store");server.send_P(200,"text/html; charset=utf-8",WEB_PAGE);}});
  server.on("/api/status",HTTP_GET,getStatus);server.on("/api/config",HTTP_GET,getConfig);server.on("/api/config",HTTP_POST,setConfig);
  server.on("/api/mock-sensor",HTTP_POST,setMockSensor);
+ server.on("/api/cloud-sync",HTTP_GET,getCloudSync);server.on("/api/cloud-sync",HTTP_POST,requestCloudSync);server.on("/api/premium-link",HTTP_GET,getPremiumLink);
+ server.on("/api/cloud-wifi",HTTP_GET,getCloudWifi);server.on("/api/cloud-wifi",HTTP_POST,setCloudWifi);
  server.on("/api/rtc",HTTP_GET,getRtc);server.on("/api/rtc",HTTP_POST,setRtc);server.on("/api/sessions",HTTP_GET,getSessions);
  server.onNotFound([]{if(authenticated())errorResponse(404,"Recurso não encontrado.");});server.begin();history.setService(servicePresence);
 }
-void loop(){servicePresence();uint64_t now=esp_timer_get_time();if(now-lastRtcPoll>=1000000){rtc.poll(now);lastRtcPoll=now;}history.tick(now);servicePresence();server.handleClient();servicePresence();delay(1);}
+void loop(){servicePresence();uint64_t now=esp_timer_get_time();if(now-lastRtcPoll>=1000000){rtc.poll(now);lastRtcPoll=now;}history.tick(now);servicePresence();cloudNetwork.tick(now);cloudSync.tick(now,cloudNetwork.connected());if(cloudSync.completionPending){cloudSync.completedAt(rtc.at(now));cloudSync.completionPending=false;}servicePresence();server.handleClient();servicePresence();delay(1);}
