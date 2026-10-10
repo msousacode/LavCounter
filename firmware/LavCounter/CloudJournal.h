@@ -7,7 +7,7 @@ class CloudJournal {
  const char* path;String binding;
 public:
  String error;bool degraded=false;
- explicit CloudJournal(const char* p=lav::SENSOR_MOCK?"/cloud-mock-v1.jsonl":"/cloud-v1.jsonl"):path(p){}
+ explicit CloudJournal(const char* p="/cloud-v1.jsonl"):path(p){}
  void setBinding(const String& b){binding=b;}
  struct Lookup {File file;size_t boundary=0;String row,id,wanted;bool over=false,done=false,matched=false,failed=false;};
  void start(Lookup& c,const String& id,const String& rev){c.file.close();c.row="";c.id=id;c.wanted=rev;c.over=false;c.done=false;c.matched=false;c.failed=false;c.file=SPIFFS.open(path,FILE_READ);c.boundary=c.file?c.file.size():0;if(!c.file){c.done=true;if(SPIFFS.exists(path)){c.failed=true;error="Falha ao ler confirmações.";}}}

@@ -24,7 +24,7 @@ enum class State {WaitClear,Idle,Candidate,ValidWash};
 inline const char* stateName(State s){return s==State::WaitClear?"WAIT_CLEAR":s==State::Idle?"IDLE":s==State::Candidate?"CANDIDATE":"VALID_WASH";}
 struct Transition {bool started=false,validated=false,closed=false;};
 class Detector {
- State state_=State::WaitClear;Sample previous=Sample::Unknown;
+ State state_=State::Idle;Sample previous=Sample::Unknown;
  uint64_t since=0,last=0;bool seen=false;
 public:
  Config config;uint64_t startedUs=0,validatedUs=0,closedUs=0;bool validated=false;
@@ -39,7 +39,7 @@ public:
   if(state_==State::WaitClear){if(value==Sample::Absent&&now-since>=next.us(ABSENCE_SECONDS)){state_=State::Idle;previous=Sample::Unknown;}return t;}
   if(state_==State::Idle){if(value==Sample::Present){config=next;startedUs=now;validatedUs=closedUs=0;validated=false;state_=State::Candidate;since=now;t.started=true;}return t;}
   if(value==Sample::Absent&&now-since>=config.us(ABSENCE_SECONDS)){closedUs=now;state_=State::Idle;previous=Sample::Unknown;t.closed=true;}
-  else if(value==Sample::Present&&!validated&&now-since>=config.us(WASH_SECONDS)){validated=true;validatedUs=now;state_=State::ValidWash;t.validated=true;}
+  else if(state_==State::Candidate&&value==Sample::Present&&!validated&&now-since>=config.us(WASH_SECONDS)){validated=true;validatedUs=now;state_=State::ValidWash;t.validated=true;}
   return t;
  }
 };

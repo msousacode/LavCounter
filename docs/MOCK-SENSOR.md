@@ -1,10 +1,12 @@
-# Simular lavagens sem VL53L1X
+ > Registro histórico: o modo simulado foi removido em 07/10/2026. O firmware atual usa exclusivamente o VL53L0X real; as instruções de ativação abaixo não se aplicam à versão atual.
+
+# Simular lavagens sem VL53L0X
 
 O mock roda na ESP32 e é controlado pelo painel local. Presença, ausência e falha alimentam a mesma máquina de estados, LEDs e gravação usados na operação física. Os tempos são reais; não existe botão para computar uma lavagem imediatamente.
 
 ## Compilar e ativar
 
-Na Arduino IDE, abra `firmware/LavCounter/LavCounter.ino`. Em `BuildConfig.h`, altere o valor padrão de `LAVCOUNTER_SENSOR_MOCK` de `0` para `1` e compile/carregue normalmente. Não habilite apagar toda a flash: os registros e a configuração devem ser preservados. Para retornar ao VL53L1X, restaure `0` e carregue novamente.
+Na Arduino IDE, abra `firmware/LavCounter/LavCounter.ino`. Em `BuildConfig.h`, altere o valor padrão de `LAVCOUNTER_SENSOR_MOCK` de `0` para `1` e compile/carregue normalmente. Não habilite apagar toda a flash: os registros e a configuração devem ser preservados. Para retornar ao VL53L0X, restaure `0` e carregue novamente.
 
 Pelo PowerShell na raiz do projeto:
 
@@ -13,7 +15,7 @@ Pelo PowerShell na raiz do projeto:
 .\scripts\build.ps1
 ```
 
-O primeiro comando gera `build/firmware-mock`, o segundo `build/firmware-physical`. Logs ficam em `build/compile-mock.log` e `build/compile-physical.log`. O script define explicitamente o modo e prevalece sobre o padrão do cabeçalho; ele somente compila, não faz upload. Dependências: core ESP32 3.3.10 e ArduinoJson 7.4.2; apenas o build físico exige Pololu VL53L1X 1.3.1. O mock não inclui nem inicializa esse driver. Ausência do sensor no firmware físico continua sendo falha, nunca ativa o mock.
+O primeiro comando gera `build/firmware-mock`, o segundo `build/firmware-physical`. Logs ficam em `build/compile-mock.log` e `build/compile-physical.log`. O script define explicitamente o modo e prevalece sobre o padrão do cabeçalho; ele somente compila, não faz upload. Dependências: core ESP32 3.3.10 e ArduinoJson 7.4.2; apenas o build físico exige Pololu VL53L0X 1.3.1. O mock não inclui nem inicializa esse driver. Ausência do sensor no firmware físico continua sendo falha, nunca ativa o mock.
 
 ## Usar o painel
 
@@ -59,6 +61,6 @@ O RTC é real e compartilhado: ajustá-lo altera o relógio do dispositivo em am
 5. Selecione Box vazio e aguarde pelo menos 2 s: vermelho e sessão encerrada. Em Eventos, atualize e confirme um único registro consolidado, marcado Simulada, com validação e encerramento (ou horários indisponíveis sem RTC).
 6. Inicie nova presença; antes de 3 s selecione falha. Restaure presença e confirme que exige outros 3 s completos. Recarregue/feche a página: o processamento continua na ESP32.
 7. Aguarde persistência sem fila, reinicie e confira totais preservados, box vazio inicial e ausência obrigatória; sessão interrompida não recebe saída inventada.
-8. Recarregue firmware físico sem apagar flash e confira configuração/histórico físico anteriores, ausência de controles mock e falha de aquisição se VL53L1X continuar desconectado.
+8. Recarregue firmware físico sem apagar flash e confira configuração/histórico físico anteriores, ausência de controles mock e falha de aquisição se VL53L0X continuar desconectado.
 
 Os testes automatizados não comprovam alcance óptico, I2C ou conexões elétricas reais. Registre separadamente execução em bancada e testes em host.

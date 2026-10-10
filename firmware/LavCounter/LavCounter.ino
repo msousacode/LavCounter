@@ -9,12 +9,13 @@
 #include "RtcClock.h"
 #include "Storage.h"
 #include "PresenceSensor.h"
+#include "SensorConsole.h"
 #include "WebPage.h"
 #include "CloudSync.h"
 #include "CloudNetwork.h"
 #include "FirebaseTest.h"
 // Active-high indicators: GPIO -> LED with built-in resistor -> GND.
-constexpr int LED_RED_PIN=25;
+constexpr int LED_RED_PIN=23;
 constexpr int LED_YELLOW_PIN=18;
 constexpr int LED_GREEN_PIN=19;
 void updateLeds(lav::State state,bool healthy,uint64_t now){
@@ -24,6 +25,7 @@ void updateLeds(lav::State state,bool healthy,uint64_t now){
  digitalWrite(LED_GREEN_PIN,on&&state==lav::State::ValidWash);
 }
 WebServer server(80);ConfigStore settings;RtcClock rtc;EventStorage history;lav::Detector detector;PresenceSensor sensor;
+SensorConsole sensorConsole;
 lavcloud::CloudConfig cloudConfig=lavcloud::defaultConfig();lavcloud::DeviceIdentity identity;
 #if defined(LAVCOUNTER_FIREBASE_TEST_ENABLED) && LAVCOUNTER_FIREBASE_TEST_ENABLED && defined(LAVCOUNTER_FIREBASE_REFRESH_TOKEN)
 lavcloud::EspTokenHttp cloudTokenHttp;
@@ -60,13 +62,9 @@ void getStatus(){
  String date=rtc.at(esp_timer_get_time());auto saved=history.totals(false,date.c_str());auto all=history.totals(true,date.c_str());auto state=detector.state();
  d["schemaVersion"]=2;d["product"]="LavCounter";d["firmwareVersion"]=lav::VERSION;d["source"]="local";
  d["sensorMode"]=lav::SENSOR_MODE;
-#if LAVCOUNTER_SENSOR_MOCK
- d["mockSample"]=sensor.sampleName();
-#else
- d["mockSample"]=nullptr;
-#endif
- d["state"]=lav::stateName(state);d["sensorHealthy"]=sensor.healthy;d["sensorError"]=sensor.error;
- if(sensor.healthy&&!lav::SENSOR_MOCK)d["distanceMm"]=sensor.distanceMm;else d["distanceMm"]=nullptr;
+ d["state"]=lav::stateName(state);d["sensorModel"]=sensor.modelName();d["sensorHealthy"]=sensor.healthy;d["sensorError"]=sensor.error;
+ d["presenceSample"]=sensor.sampleName();d["presenceReason"]=sensor.presenceReason;d["distanceValid"]=sensor.distanceValid;d["sensorRangeStatus"]=sensor.rangeStatus;
+ if(sensor.distanceValid)d["distanceMm"]=sensor.distanceMm;else d["distanceMm"]=nullptr;
  d["ledColor"]=lav::ledColor(state);d["ledBlinking"]=!sensor.healthy||state==lav::State::WaitClear;
  d["observedWashes"]=history.observed;d["persistedWashes"]=saved.total;
  if(rtc.valid())d["todayWashes"]=all.today;else d["todayWashes"]=nullptr;
@@ -96,21 +94,6 @@ void requestCloudSync(){
  if(code==403)d["error"]="Premium sem autorização ativa.";else if(code==503)d["error"]="Configuração, conexão ou identidade indisponível.";sendJson(code,d);
 }
 void getPremiumLink(){if(!authenticated())return;String url=identity.premiumLink(cloudConfig);if(url.isEmpty()){errorResponse(503,identity.valid()?"Cadastro premium indisponível: URL SaaS não configurada.":"Identidade indisponível para cadastro.");return;}JsonDocument d;d["url"]=url;d["clientId"]=identity.clientId;d["deviceId"]=identity.deviceId;sendJson(200,d);}
-void setMockSensor(){
- if(!authenticated())return;
-#if LAVCOUNTER_SENSOR_MOCK
- JsonDocument d;
- if(server.arg("plain").length()>128||deserializeJson(d,server.arg("plain"))||!d.is<JsonObject>()||d.size()!=1||!d["sample"].is<const char*>()){
-  errorResponse(400,"Envie somente sample: present, absent ou fault.");return;
- }
- // Process the previous sample before accepting a new input; never set detector state here.
- servicePresence();
- if(!sensor.select(d["sample"].as<const char*>())){errorResponse(400,"Entrada simulada inválida.");return;}
- d.clear();d["sensorMode"]=lav::SENSOR_MODE;d["mockSample"]=sensor.sampleName();sendJson(200,d);
-#else
- errorResponse(404,"Simulação não habilitada neste firmware.");
-#endif
-}
 void setConfig(){
  if(!authenticated())return;servicePresence();JsonDocument input,result;
  if(server.arg("plain").length()>4096||deserializeJson(input,server.arg("plain"))){errorResponse(400,"Configuração inválida.");return;}
@@ -142,6 +125,7 @@ void setup(){
  updateLeds(detector.state(),sensor.healthy,esp_timer_get_time());
  pinMode(26,OUTPUT);digitalWrite(26,HIGH);
  history.begin(nullptr);settings.ensureIdAbove(history.maxId());sensor.begin(esp_timer_get_time());ready=true;
+ sensorConsole.begin();
  cloudNetwork.begin(cloudConfig);MDNS.begin("lavcounter");
 #ifdef LAVCOUNTER_CLOUD_PROVIDERS
  lavcloud::AuthProvider* auth=&defaultCloudAuth;lavcloud::PremiumProvider* premium=&defaultPremium;
@@ -150,10 +134,9 @@ void setup(){
  cloudSync.begin();
  server.on("/",HTTP_GET,[]{if(authenticated()){server.sendHeader("Cache-Control","no-store");server.send_P(200,"text/html; charset=utf-8",WEB_PAGE);}});
  server.on("/api/status",HTTP_GET,getStatus);server.on("/api/config",HTTP_GET,getConfig);server.on("/api/config",HTTP_POST,setConfig);
- server.on("/api/mock-sensor",HTTP_POST,setMockSensor);
  server.on("/api/cloud-sync",HTTP_GET,getCloudSync);server.on("/api/cloud-sync",HTTP_POST,requestCloudSync);server.on("/api/premium-link",HTTP_GET,getPremiumLink);
  server.on("/api/cloud-wifi",HTTP_GET,getCloudWifi);server.on("/api/cloud-wifi",HTTP_POST,setCloudWifi);
  server.on("/api/rtc",HTTP_GET,getRtc);server.on("/api/rtc",HTTP_POST,setRtc);server.on("/api/sessions",HTTP_GET,getSessions);
  server.onNotFound([]{if(authenticated())errorResponse(404,"Recurso não encontrado.");});server.begin();history.setService(servicePresence);
 }
-void loop(){servicePresence();uint64_t now=esp_timer_get_time();if(now-lastRtcPoll>=1000000){rtc.poll(now);lastRtcPoll=now;}history.tick(now);servicePresence();cloudNetwork.tick(now);cloudSync.tick(now,cloudNetwork.connected());if(cloudSync.completionPending){cloudSync.completedAt(rtc.at(now));cloudSync.completionPending=false;}servicePresence();server.handleClient();servicePresence();delay(1);}
+void loop(){servicePresence();uint64_t now=esp_timer_get_time();if(now-lastRtcPoll>=1000000){rtc.poll(now);lastRtcPoll=now;}history.tick(now);servicePresence();cloudNetwork.tick(now);cloudSync.tick(now,cloudNetwork.connected());if(cloudSync.completionPending){cloudSync.completedAt(rtc.at(now));cloudSync.completionPending=false;}servicePresence();server.handleClient();servicePresence();sensorConsole.tick(esp_timer_get_time(),sensor,detector.state(),(detector.active()?detector.config:settings.current).v[lav::PRESENCE_MM]);delay(1);}

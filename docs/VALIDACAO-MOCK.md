@@ -1,3 +1,5 @@
+ > Registro histórico: o modo simulado foi removido em 07/10/2026. O firmware atual usa exclusivamente o VL53L0X real; as instruções de ativação abaixo não se aplicam à versão atual.
+
 # Validação do mock VL53L1X
 
 Change: `mock-sensor-vl53l1x`, branch `mock-sensor`, 02/10/2026.

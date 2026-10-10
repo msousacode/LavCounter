@@ -43,5 +43,13 @@ inline void portENTER_CRITICAL(portMUX_TYPE*){} inline void portEXIT_CRITICAL(po
 inline void portENTER_CRITICAL_ISR(portMUX_TYPE*){} inline void portEXIT_CRITICAL_ISR(portMUX_TYPE*){}
 inline int pinValues[40]={};inline void pinMode(int,int){}inline void digitalWrite(int p,int v){pinValues[p]=v;}inline int digitalPinToInterrupt(int p){return p;}
 inline void attachInterrupt(int,void(*)(),int){}inline void delay(int){}
-struct FakeSerial {void begin(int){} template<class... A>void printf(const char*,A...){} template<class T>void print(T){}template<class T>void println(T){}};
+struct FakeSerial {
+ String input,output;size_t cursor=0;int txFree=64;
+ void begin(int){}
+ int available(){return int(input.length()-cursor);}
+ int read(){return available()?input[cursor++]:-1;}
+ int availableForWrite(){return txFree;}
+ size_t write(const uint8_t* bytes,size_t count){for(size_t i=0;i<count;i++)output+=char(bytes[i]);return count;}
+ template<class... A>void printf(const char*,A...){} template<class T>void print(T){}template<class T>void println(T){}
+};
 inline FakeSerial Serial;

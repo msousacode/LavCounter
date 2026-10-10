@@ -7,7 +7,7 @@ Detectar a permanência de veículos no box para inferir uma lavagem por sessão
 ## Requirements
 
 ### Requirement: Aquisição de presença
-O sistema SHALL usar leituras válidas do VL53L1X e um limiar configurável em milímetros para determinar presença. Leituras inválidas ou indisponíveis SHALL ser tratadas como desconhecidas, sem inferir ausência nem somar tempo de presença. O sistema SHALL expor a saúde do sensor.
+O sistema SHALL usar exclusivamente leituras válidas do VL53L0X real e um limiar configurável em milímetros para determinar presença, sem modo simulado ou comandos de simulação no painel. Leituras inválidas ou indisponíveis SHALL ser tratadas como desconhecidas, sem inferir ausência nem somar tempo de presença. O sistema SHALL expor a saúde do sensor.
 
 #### Scenario: Distância dentro do limiar
 - **WHEN** uma leitura válida é menor ou igual ao limiar configurado

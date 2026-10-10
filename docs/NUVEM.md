@@ -1,6 +1,6 @@
 # Identidade, cadastro e nuvem
 
-O primeiro boot gera clientId UUID v4 e confirma sua gravação no namespace NVS `lavIdentity`. É reutilizado em reinícios, upgrades e perfis físico/mock. deviceId usa os seis bytes do MAC eFuse, no formato `esp32-` e 12 hexadecimais. NVS ilegível/corrompida bloqueia cadastro/envio sem gerar identidade substituta silenciosamente. Preserve NVS/flash ao atualizar. Factory reset exige reprovisionamento explícito.
+O primeiro boot gera clientId UUID v4 e confirma sua gravação no namespace NVS `lavIdentity`. É reutilizado em reinícios e upgrades do firmware físico. deviceId usa os seis bytes do MAC eFuse, no formato `esp32-` e 12 hexadecimais. NVS ilegível/corrompida bloqueia cadastro/envio sem gerar identidade substituta silenciosamente. Preserve NVS/flash ao atualizar. Factory reset exige reprovisionamento explícito.
 
 Uma compra independente gera identidade de instalação independente. O SaaS futuro associa UID da conta criada com e-mail/senha a clientId e deviceId recebidos na URL HTTPS de cadastro. Não existe código temporário de ativação. E-mail pode mudar sem alterar identidade/histórico. Os IDs na URL são contexto de cadastro, nunca credenciais ou prova de propriedade/premium. O serviço deve preservar vínculos existentes, sem sobrescrever dono silenciosamente.
 

@@ -21,7 +21,7 @@ test('identidade automática e nuvem não configurada preservam métricas locais
 test('premium inativo, desconhecido, expirado e offline bloqueiam envio',async({page})=>{
  cloud.configured=true;cloud.wifiConnected=true;
  for(const [premiumStatus,state,text] of [['inactive','premium_required','Premium necessário'],['unknown','premium_unknown','ainda não confirmado'],['expired','premium_expired','expirada']]){cloud.premiumStatus=premiumStatus;cloud.state=state;await page.reload();await expect(page.locator('#cloud-state')).toContainText(text);await expect(page.locator('#cloud-sync')).toBeDisabled();}
- cloud.premiumStatus='active';cloud.wifiConnected=false;cloud.state='offline';await page.reload();await expect(page.locator('#cloud-state')).toHaveText('Wi-Fi desconectado');await expect(page.locator('#cloud-sync')).toBeDisabled();expect(posts).toBe(0);
+ cloud.premiumStatus='active';cloud.wifiConnected=false;cloud.state='offline';await page.reload();await expect(page.locator('#cloud-state')).toHaveText('Wi-Fi desconectado');await expect(page.locator('#cloud-sync')).toBeEnabled();await page.locator('#cloud-sync').click();await expect(page.locator('#wifi-setup')).toBeVisible();expect(posts).toBe(0);
  cloud.wifiConnected=true;cloud.state='premium_unknown';await page.reload();await expect(page.locator('#cloud-sync')).toBeDisabled();
 });
 test('Premium abre URL com IDs estáveis sem código nem segredo',async({page})=>{

@@ -1,11 +1,13 @@
 # API local — contrato v2
 
+O status autenticado inclui `presenceSample` (`present`, `absent`, `unknown`), `presenceReason`, `distanceValid` e `sensorRangeStatus` (status traduzido do VL53L1X; bruto de 4 bits do VL53L0X). Razões: `within_threshold`, `beyond_threshold`, `signal_insufficient`, `invalid_range`, `i2c_error`, `timeout`, `stale`, `initializing`. No VL53L1X, status 2 com aquisição íntegra retorna `absent`, `signal_insufficient`, `distanceValid=false`, `distanceMm=null`, `sensorHealthy=true` e erro vazio. Falhas reais retornam `unknown`, saúde falsa e distância nula. Diagnósticos expiram após 500 ms sem nova amostra. Ausência operacional ainda precisa cumprir o tempo configurado para encerrar a sessão; não comprova fisicamente baia vazia.
+
 Todas as rotas exigem HTTP Basic (`lavcounter` / `lav123`), inclusive consultas e rotas inexistentes. A rede SoftAP é LavCounter, senha lavcounter123; URL http://192.168.4.1. JSON usa UTF-8 e Cache-Control: no-store. O serviço é local, sem TLS ou dependência de internet.
 
 | Rota | Contrato |
 | --- | --- |
 | GET / | Painel autocontido |
-| GET /api/status | schemaVersion=2, source=local, state, distanceMm (null se inválida), sensorHealthy, sensorError, ledColor, ledBlinking, session |
+| GET /api/status | schemaVersion=2, source=local, state, distanceMm (null se inválida), sensorModel, sensorHealthy, sensorError, ledColor, ledBlinking, session |
 | POST /api/mock-sensor | Somente firmware mock: sample=present/absent/fault; 200 confirma entrada, 400 rejeita corpo inválido, 404 no físico |
 | GET /api/config | values, defaults, revision, fields com unidade/limites/ajuda, error |
 | POST /api/config | revision e values com os três parâmetros inteiros |
@@ -14,7 +16,7 @@ Todas as rotas exigem HTTP Basic (`lavcounter` / `lav123`), inclusive consultas 
 
 Status inclui observedWashes, persistedWashes, todayWashes (null se RTC inválido), undatedWashes, queuedEvents, lostEvents, storageError, storageDegraded e uso/capacidade. O total observado inclui validações vistas nesta execução e as recuperadas no boot. O total persistido só inclui registros confirmados. Contagem diária e sem data incluem registros persistidos e em fila; perdas explicitamente sinalizadas podem torná-las incompletas. A passagem da fila ao disco não aumenta a contagem novamente. A data é a da validação, não a do encerramento. Dados sem data não são atribuídos retroativamente ao dia atual.
 
-Status também inclui `sensorMode` (`physical`/`mock`) e `mockSample` (`present`/`absent`/`fault`, ou `null` no físico). No mock, `distanceMm` é `null`; `source` continua `local`. Sessões incluem `sensorMode`, inclusive registros físicos antigos normalizados na leitura. Histórico, totais, configuração e IDs são separados por modo. Consulte [contrato e exemplos da simulação](MOCK-SENSOR.md).
+`sensorModel` informa VL53L0X, VL53L1X ou ToF nao identificado. Status inclui `sensorMode` sempre igual a `physical`. `distanceMm` contém a distância válida do VL53L0X ou VL53L1X, ou `null` quando o sensor está indisponível ou a leitura é inválida. Sessões incluem `sensorMode`; registros físicos antigos são normalizados na leitura. O campo `mockSample` e a rota `/api/mock-sensor` foram removidos.
 
 Exemplo de configuração (use a revisão recebida, não uma constante):
 
@@ -59,6 +61,10 @@ Sem Wi-Fi externo, Sincronizar com a nuvem abre o formulário de rede e senha. C
 
 ## Formatos de exibição
 
-O painel usa `dd/MM/YYYY HH:mm` para início, encerramento, validação, relógio local, última sincronização e expiração da autorização. Datas do RTC são exibidas sem conversão de fuso; a expiração UTC é exibida em America/Sao_Paulo. Duração no histórico e na sessão ativa usa `hh:mm:ss`, descartando a fração de segundo e preservando horas acima de 24. O formulário do relógio recebe o mesmo formato brasileiro, valida o calendário e envia a representação ISO local com segundos zero. APIs, histórico e Firestore mantêm seus formatos originais e a precisão armazenada.
+O painel usa `dd/MM/YYYY HH:mm` para início, encerramento, validação, relógio local, última sincronização e expiração da autorização. Datas do RTC são exibidas sem conversão de fuso; a expiração UTC é exibida em America/Sao_Paulo. Duração no histórico e na sessão ativa usa `hh:mm:ss`, descartando a fração de segundo e preservando horas acima de 24. O formulário do relógio oferece o seletor nativo de data e hora, valida o calendário e envia a representação ISO local com segundos zero. APIs, histórico e Firestore mantêm seus formatos originais e a precisão armazenada.
 
 Eventos: Sessão / Início, Encerramento, Duração, Resultado, Validação.
+
+O formulário de ajuste do RTC usa `datetime-local`, com seletor nativo de calendário e horário do navegador/celular, precisão de minutos e anos entre 2000 e 2099. Carrega e envia a hora local em ISO, sem conversão de fuso; o POST acrescenta segundos zero. A apresentação do campo segue o idioma do navegador; os demais horários do painel permanecem em `dd/MM/YYYY HH:mm`. Erro 503 indica falha de escrita/leitura do RTC, distinta de formato inválido.
+
+
