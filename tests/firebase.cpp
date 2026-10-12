@@ -55,4 +55,16 @@ int main(){
  token.expiresAt=now;assert(!premium.check(c,token,binding,now,grant));
  c.testUntil=0;assert(!c.valid()&&!premium.check(c,token,binding,now,grant));
  puts("PASS temporary test grant: explicit opt-in, real token required, exact device/mode/project/database binding, fixed expiry, production default denied");
+ FirebaseManagedPremium managed("lavcounter","(default)",identity);
+ token.expiresAt=now+3600;
+ assert(!managed.check(c,token,binding,now,grant));
+ c.firebaseManagedPremium=true;assert(c.valid());
+ assert(managed.check(c,token,binding,now,grant)&&grant.allows(binding,now));
+ const uint64_t later=1900000000ULL;token.expiresAt=later+3600;
+ assert(managed.check(c,token,binding,later,grant)&&grant.allows(binding,later)&&grant.effective(later)==PremiumStatus::Active);
+ assert(!managed.check(c,token,"wrong-binding",later,grant));
+ c.projectId="other-project";assert(!managed.check(c,token,binding,later,grant));c.projectId="lavcounter";
+ c.databaseId="other-db";assert(!managed.check(c,token,binding,later,grant));c.databaseId="(default)";
+ token.expiresAt=later;assert(!managed.check(c,token,binding,later,grant));
+ puts("PASS Firebase-managed premium: no local deadline, valid token and exact binding required");
 }

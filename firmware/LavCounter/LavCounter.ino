@@ -30,7 +30,7 @@ lavcloud::CloudConfig cloudConfig=lavcloud::defaultConfig();lavcloud::DeviceIden
 #if defined(LAVCOUNTER_FIREBASE_TEST_ENABLED) && LAVCOUNTER_FIREBASE_TEST_ENABLED && defined(LAVCOUNTER_FIREBASE_REFRESH_TOKEN)
 lavcloud::EspTokenHttp cloudTokenHttp;
 lavcloud::FirebaseRefreshAuth defaultCloudAuth(cloudTokenHttp,LAVCOUNTER_FIREBASE_API_KEY,LAVCOUNTER_FIREBASE_CA,LAVCOUNTER_FIREBASE_REFRESH_TOKEN,LAVCOUNTER_FIREBASE_AUTH_UID,LAVCOUNTER_FIREBASE_PROJECT_NUMBER);
-lavcloud::TemporaryTestPremium defaultPremium("lavcounter","(default)",LAVCOUNTER_FIREBASE_TEST_UNTIL,identity);
+lavcloud::FirebaseManagedPremium defaultPremium("lavcounter","(default)",identity);
 #else
 lavcloud::UnavailableAuth defaultCloudAuth;lavcloud::UnavailablePremium defaultPremium;
 #endif

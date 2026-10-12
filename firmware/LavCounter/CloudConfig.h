@@ -22,8 +22,8 @@ struct CloudConfig {
  const char* ssid="";const char* wifiPassword="";const char* projectId="";const char* databaseId="(default)";
  const char* signupUrl="";const char* premiumUrl="";const char* caPem="";
  // Explicit, expiring integration override. Zero preserves production premium checks.
- uint64_t testUntil=0;const char* authUid="";
- bool valid()const{return enabled&&segment(projectId)&&(!strcmp(databaseId,"(default)")||segment(databaseId))&&(httpsUrl(premiumUrl)||(testUntil>=1700000000&&segment(authUid)))&&*caPem;}
+ uint64_t testUntil=0;const char* authUid="";bool firebaseManagedPremium=false;
+ bool valid()const{return enabled&&segment(projectId)&&(!strcmp(databaseId,"(default)")||segment(databaseId))&&(httpsUrl(premiumUrl)||((firebaseManagedPremium||testUntil>=1700000000)&&segment(authUid)))&&*caPem;}
  bool stationConfigured()const{return *ssid&&strlen(ssid)<=32&&strlen(wifiPassword)<=63;}
  String binding(const char* client,const char* device,const char* mode)const{return String(projectId)+"/"+databaseId+"/"+client+"/"+device+"/"+mode;}
 };
@@ -35,6 +35,9 @@ namespace lavcloud {
 inline CloudConfig defaultConfig(){CloudConfig c;
 #ifdef LAVCOUNTER_CLOUD_CONFIGURE
  LAVCOUNTER_CLOUD_CONFIGURE(c);
+#endif
+#if defined(LAVCOUNTER_FIREBASE_TEST_ENABLED) && LAVCOUNTER_FIREBASE_TEST_ENABLED && defined(LAVCOUNTER_FIREBASE_REFRESH_TOKEN)
+ c.firebaseManagedPremium=true;c.testUntil=0;
 #endif
  return c;}
 }

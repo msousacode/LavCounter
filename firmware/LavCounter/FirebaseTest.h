@@ -55,6 +55,19 @@ public:
  }
 };
 
+// Local permission to attempt uploads; Firestore rules authorize every write.
+class FirebaseManagedPremium:public PremiumProvider {
+ const char* project;const char* database;const DeviceIdentity& identity;
+public:
+ FirebaseManagedPremium(const char* p,const char* d,const DeviceIdentity& i):project(p),database(d),identity(i){}
+ bool check(const CloudConfig& c,const AuthToken& token,const String& binding,uint64_t utc,PremiumGrant& out)override{
+  out=PremiumGrant{};
+  if(!c.firebaseManagedPremium||!c.valid()||!token.valid(utc)||strcmp(c.projectId,project)||strcmp(c.databaseId,database)||!identity.valid())return false;
+  if(binding!=c.binding(identity.clientId.c_str(),identity.deviceId.c_str(),lav::SENSOR_MODE).c_str())return false;
+  out.binding=binding;out.expiresAt=UINT64_MAX;out.status=PremiumStatus::Active;return true;
+ }
+};
+
 class TemporaryTestPremium:public PremiumProvider {
  const char* project;const char* database;uint64_t until;const DeviceIdentity& identity;
 public:

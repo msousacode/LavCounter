@@ -36,6 +36,13 @@ test('aceite não é confirmação, clique concorrente é bloqueado e falha parc
 test('layout móvel e endereço inválido do cadastro',async({page})=>{
  link='http://saas.example/cadastro';await page.setViewportSize({width:390,height:844});await page.reload();await expect(page.locator('#premium')).toBeDisabled();await expect(page.locator('#premium-reason')).toContainText('inválido');await expect(page.locator('body')).toHaveJSProperty('scrollWidth',390);await page.screenshot({path:'build/web-cloud-mobile.png',fullPage:true});
 });
+test('Firebase controla a liberação sem prazo local no painel',async({page})=>{
+ cloud={...cloud,configured:true,wifiConnected:true,premiumStatus:'active',state:'idle',testMode:true,testUntil:0,firebaseManagedPremium:true};
+ await page.reload();await expect(page.locator('#cloud-test-notice')).toHaveText('Premium liberado · autorização dos envios controlada pelo Firebase.');
+ await expect(page.locator('#cloud-sync')).toBeEnabled();await expect(page.locator('#cloud-description')).toContainText('sem compra de Premium');
+ await expect(page.locator('#cloud-test-notice')).not.toContainText('1970');
+ cloud.state='error';cloud.lastError='Firebase recusou o envio';await page.reload();await expect(page.locator('#cloud-error')).toContainText('Firebase recusou');
+});
 test('teste Firebase libera sincronização sem compra e identifica expiração',async({page})=>{
  cloud={...cloud,configured:true,wifiConnected:true,premiumStatus:'active',state:'idle',testMode:true,testUntil:1791676800};
  await page.setViewportSize({width:390,height:844});await page.reload();

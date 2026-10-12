@@ -14,7 +14,7 @@
 int main(){
  setup();for(unsigned i=0;i<server.routeCount;i++){server.allowed=false;server.routes[i].handler();assert(server.code==401);}server.allowed=true;
  getCloudSync();JsonDocument d;assert(server.code==200&&!deserializeJson(d,server.response));
- assert(d["configured"]==true&&d["testMode"]==true&&d["testUntil"]==1791676800ULL);
+ assert(d["configured"]==true&&d["testMode"]==true&&d["testUntil"]==0&&d["firebaseManagedPremium"]==true);
  assert(d["authUid"]=="fixture-uid"&&d["premiumStatus"]=="unknown"&&d["state"]=="premium_unknown");
  assert(strstr(server.response.c_str(),"fixture-refresh-secret")==nullptr&&strstr(server.response.c_str(),"fixture-key")==nullptr);
  lavcloud::AuthToken token;assert(!defaultCloudAuth.acquire(1800000000,false,token)); // native HTTPS stub cannot authorize

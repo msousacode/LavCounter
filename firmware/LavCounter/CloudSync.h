@@ -80,7 +80,7 @@ public:
  void describe(JsonDocument& d){
   d["configured"]=config.valid();d["clientId"]=identity.valid()?identity.clientId:String("");d["deviceId"]=identity.deviceId;d["sensorMode"]=lav::SENSOR_MODE;d["wifiConnected"]=wifi;
   d["premiumStatus"]=premiumName(grant.effective(worker.utc()));d["state"]=state();
-  d["testMode"]=config.testUntil!=0;d["testUntil"]=config.testUntil;d["authUid"]=config.authUid;
+  d["testMode"]=config.testUntil!=0||config.firebaseManagedPremium;d["testUntil"]=config.testUntil;d["authUid"]=config.authUid;d["firebaseManagedPremium"]=config.firebaseManagedPremium;
   if(countKnown){d["pendingVersions"]=pending;d["confirmedVersions"]=confirmed;}else{d["pendingVersions"]=nullptr;d["confirmedVersions"]=nullptr;}
   d["cycleConfirmed"]=confirmed;d["cyclePending"]=pending;d["countsComplete"]=countKnown;
   if(lastCompleted.isEmpty())d["lastCompletedAt"]=nullptr;else d["lastCompletedAt"]=lastCompleted;

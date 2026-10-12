@@ -1,5 +1,11 @@
 # Identidade, cadastro e nuvem
 
+## Liberação atual (12/10/2026)
+
+Na integração Firebase privada habilitada, o Premium permanece liberado no firmware, sem prazo local. `FirebaseManagedPremium` substitui o provedor temporário na montagem do sketch. `defaultConfig()` seleciona `firebaseManagedPremium=true` e `testUntil=0`; a data antiga do arquivo privado deixa de bloquear envios. As regras do Firebase decidem se cada escrita pode ser aceita, inclusive o prazo configurado pelo administrador. Essa configuração não foi consultada nem alterada nesta mudança.
+
+Token válido, renovação automática, TLS, relógio UTC confiável, vínculo exato de projeto/banco/dispositivo/modo e confirmação durável continuam obrigatórios. A permissão local significa autorização para tentar sincronizar, não comprovação de Premium remoto nem sucesso de upload. Sem integração privada habilitada, o comportamento padrão permanece bloqueado. O painel mostra a liberação controlada pelo Firebase; `/api/cloud-sync` acrescenta `firebaseManagedPremium` e mantém `testMode=true` por compatibilidade. O provedor temporário abaixo permanece apenas para compatibilidade/testes; seu prazo não se aplica à integração atual.
+
 O primeiro boot gera clientId UUID v4 e confirma sua gravação no namespace NVS `lavIdentity`. É reutilizado em reinícios e upgrades do firmware físico. deviceId usa os seis bytes do MAC eFuse, no formato `esp32-` e 12 hexadecimais. NVS ilegível/corrompida bloqueia cadastro/envio sem gerar identidade substituta silenciosamente. Preserve NVS/flash ao atualizar. Factory reset exige reprovisionamento explícito.
 
 Uma compra independente gera identidade de instalação independente. O SaaS futuro associa UID da conta criada com e-mail/senha a clientId e deviceId recebidos na URL HTTPS de cadastro. Não existe código temporário de ativação. E-mail pode mudar sem alterar identidade/histórico. Os IDs na URL são contexto de cadastro, nunca credenciais ou prova de propriedade/premium. O serviço deve preservar vínculos existentes, sem sobrescrever dono silenciosamente.
