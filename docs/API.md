@@ -1,8 +1,10 @@
 # API local — contrato v2
 
+Após validação, `sensorRangeStatus=7` óptico do VL53L1X com `presenceReason=invalid_range` continua expondo `presenceSample=unknown`, distância nula e saúde falsa. O detector pausa a saída nessa condição, preservando apenas tempo de ausência previamente confirmado; não credita o intervalo desconhecido. Novas amostras ausentes retomam a saída; presença válida, falhas de transporte/timeout/expiração e demais status inválidos reiniciam a contagem. A candidata permanece exigindo continuidade integral. Status 2 íntegro e distância válida acima do limiar seguem confirmando ausência normalmente.
+
 O status autenticado inclui `presenceSample` (`present`, `absent`, `unknown`), `presenceReason`, `distanceValid` e `sensorRangeStatus` (status traduzido do VL53L1X; bruto de 4 bits do VL53L0X). Razões: `within_threshold`, `beyond_threshold`, `signal_insufficient`, `invalid_range`, `i2c_error`, `timeout`, `stale`, `initializing`. No VL53L1X, status 2 com aquisição íntegra retorna `absent`, `signal_insufficient`, `distanceValid=false`, `distanceMm=null`, `sensorHealthy=true` e erro vazio. Falhas reais retornam `unknown`, saúde falsa e distância nula. Diagnósticos expiram após 500 ms sem nova amostra. Ausência operacional ainda precisa cumprir o tempo configurado para encerrar a sessão; não comprova fisicamente baia vazia.
 
-Todas as rotas exigem HTTP Basic (`lavcounter` / `lav123`), inclusive consultas e rotas inexistentes. A rede SoftAP é LavCounter, senha lavcounter123; URL http://192.168.4.1. JSON usa UTF-8 e Cache-Control: no-store. O serviço é local, sem TLS ou dependência de internet.
+Todas as rotas exigem HTTP Basic (`lav123` / `lav123`), inclusive consultas e rotas inexistentes. A rede SoftAP é LavCounter, senha lavcounter123; URL http://192.168.4.1. JSON usa UTF-8 e Cache-Control: no-store. O serviço é local, sem TLS ou dependência de internet.
 
 | Rota | Contrato |
 | --- | --- |
@@ -10,7 +12,7 @@ Todas as rotas exigem HTTP Basic (`lavcounter` / `lav123`), inclusive consultas 
 | GET /api/status | schemaVersion=2, source=local, state, distanceMm (null se inválida), sensorModel, sensorHealthy, sensorError, ledColor, ledBlinking, session |
 | POST /api/mock-sensor | Somente firmware mock: sample=present/absent/fault; 200 confirma entrada, 400 rejeita corpo inválido, 404 no físico |
 | GET /api/config | values, defaults, revision, fields com unidade/limites/ajuda, error |
-| POST /api/config | revision e values com os três parâmetros inteiros |
+| POST /api/config | revision e values com os quatro parâmetros inteiros, restritos às opções |
 | GET/POST /api/rtc | valid, dateTime e error; escrita recebe dateTime local YYYY-MM-DDTHH:mm:ss, 2000–2099 |
 | GET /api/sessions | events consolidados, nextCursor como string, hasMore, degraded; limit 1–50 (padrão 20), cursor inicial 0 |
 
@@ -21,10 +23,12 @@ Status inclui observedWashes, persistedWashes, todayWashes (null se RTC inválid
 Exemplo de configuração (use a revisão recebida, não uma constante):
 
 ```json
-{"revision":1,"values":{"presenceMaxMm":1500,"washMinSeconds":120,"absenceMinSeconds":10}}
+{"revision":1,"values":{"presenceMaxMm":1500,"washMinSeconds":120,"absenceMinSeconds":30,"candidateAbsenceSeconds":5}}
 ```
 
 Valores inválidos retornam 400, revisão desatualizada 409, gravação falha 500 e RTC/histórico indisponível 503. Sucesso de gravação da configuração significa persistência confirmada. Sessão ativa mantém o snapshot anterior. O filtro category foi removido e retorna 400. Campos hidráulicos não fazem parte do contrato v2.
+
+Opções exatas: `presenceMaxMm` = 400/1000/1500; `washMinSeconds` = 60/120/180/240/300; `absenceMinSeconds` = 30/60/120; `candidateAbsenceSeconds` = 3/5/30/60. Todos os quatro campos são obrigatórios no POST. `fields[].options` contém `{value,label}`; o valor é armazenado em milímetros/segundos, enquanto `unit` e `label` descrevem a apresentação em metros/minutos/segundos. A ausência da candidata usa o novo campo; após validação usa `absenceMinSeconds`. Configuração antiga lida da NVS é adaptada em RAM com aviso: conserva opções válidas, usa padrões nos demais campos e só persiste mediante Save. Registros históricos permanecem com seus snapshots originais.
 
 ## Journal e consultas
 

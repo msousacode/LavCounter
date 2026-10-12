@@ -4,7 +4,7 @@
 void samples(uint16_t mm,unsigned n){VL53L0X::mm=mm;for(unsigned i=0;i<n;i++){fakeTime+=100000;servicePresence();}}
 int main(){
  // Check every physical output, both blink phases, and exclusive colors.
- pinValues[5]=-1;
+ pinValues[5]=-1;pinValues[23]=-1;
  const lav::State states[]={lav::State::WaitClear,lav::State::Idle,lav::State::Candidate,lav::State::ValidWash};
  const bool healthValues[]={false,true};
  const uint64_t phases[]={0,499999,500000,999999,1000000};
@@ -12,26 +12,26 @@ int main(){
   for(bool healthy:healthValues)for(uint64_t at:phases){
    updateLeds(state,healthy,at);
    bool lit=(healthy&&state!=lav::State::WaitClear)||at<500000||at>=1000000;
-   assert(pinValues[23]==(lit&&(state==lav::State::Idle||state==lav::State::WaitClear)));
+   assert(pinValues[25]==(lit&&(state==lav::State::Idle||state==lav::State::WaitClear)));
    assert(pinValues[18]==(lit&&state==lav::State::Candidate));
    assert(pinValues[19]==(lit&&state==lav::State::ValidWash));
-   assert(pinValues[23]+pinValues[18]+pinValues[19]<=1);
+   assert(pinValues[25]+pinValues[18]+pinValues[19]<=1);
   }
  }
- assert(pinValues[5]==-1);
+ assert(pinValues[5]==-1&&pinValues[23]==-1);
  const String oldSimulation="{\"sessionId\":\"99\",\"validated\":true,\"sensorMode\":\"mock\"}\n";
  mockDisk.bytes=oldSimulation;Preferences::mockConfig="old-simulation-settings";
  setup();assert(detector.state()==lav::State::Idle&&!detector.active());assert(history.observed==0);for(unsigned i=0;i<server.routeCount;i++){server.allowed=false;server.routes[i].handler();assert(server.code==401);}server.allowed=true;
  getCloudSync();JsonDocument cloudState;assert(server.code==200&&!deserializeJson(cloudState,server.response));assert(cloudState["state"]=="not_configured"&&cloudState["premiumStatus"]=="unknown");assert(cloudState["sensorMode"]=="physical");assert(lavcloud::uuid(cloudState["clientId"]|""));server.plain="{}";requestCloudSync();assert(server.code==503);getPremiumLink();assert(server.code==503);cloudConfig.signupUrl="https://saas.example/cadastro";getPremiumLink();assert(server.code==200&&!deserializeJson(cloudState,server.response));assert(cloudState["url"]==identity.premiumLink(cloudConfig).c_str());server.plain="{\"premium\":true}";requestCloudSync();assert(server.code==400);
  server.plain="{\"dateTime\":\"2026-10-01T12:00:00\"}";setRtc();assert(server.code==200);
- lav::Config c;c.v[lav::WASH_SECONDS]=1;c.v[lav::ABSENCE_SECONDS]=1;assert(settings.save(c));
- samples(2000,11);assert(detector.state()==lav::State::Idle);assert(pinValues[23]==1&&pinValues[18]==0&&pinValues[19]==0);
- samples(1000,1);assert(detector.active());assert(pinValues[23]==0&&pinValues[18]==1&&pinValues[19]==0);
- samples(1000,10);assert(detector.validated);assert(history.observed==1);assert(pinValues[23]==0&&pinValues[18]==0&&pinValues[19]==1);
+ lav::Config c;c.v[lav::WASH_SECONDS]=60;c.v[lav::ABSENCE_SECONDS]=30;c.v[lav::CANDIDATE_ABSENCE_SECONDS]=3;assert(settings.save(c));
+ samples(2000,11);assert(detector.state()==lav::State::Idle);assert(pinValues[25]==1&&pinValues[18]==0&&pinValues[19]==0);
+ samples(1000,1);assert(detector.active());assert(pinValues[25]==0&&pinValues[18]==1&&pinValues[19]==0);
+ samples(1000,600);assert(detector.validated);assert(history.observed==1);assert(pinValues[25]==0&&pinValues[18]==0&&pinValues[19]==1);
  samples(1000,20);assert(history.observed==1);getStatus();JsonDocument d;assert(!deserializeJson(d,server.response));assert(d["state"]=="VALID_WASH");assert(d["observedWashes"]==1);assert(d["distanceMm"]==1000);assert(d["rateLpm"].isNull());
- JsonDocument body;body["revision"]=settings.current.revision;c.v[lav::WASH_SECONDS]=2;configJson(body["values"].to<JsonObject>(),c);serializeJson(body,server.plain);setConfig();assert(server.code==200);assert(detector.config.v[lav::WASH_SECONDS]==1);
+ JsonDocument body;body["revision"]=settings.current.revision;c.v[lav::WASH_SECONDS]=120;configJson(body["values"].to<JsonObject>(),c);serializeJson(body,server.plain);setConfig();assert(server.code==200);assert(detector.config.v[lav::WASH_SECONDS]==60);
  String started=current.startedAt;server.plain="{\"dateTime\":\"2026-10-02T12:00:00\"}";setRtc();assert(server.code==200);assert(current.startedAt==started.c_str());serializeJson(body,server.plain);setConfig();assert(server.code==409);body["revision"]=settings.current.revision;body["values"]["washMinSeconds"]=0;serializeJson(body,server.plain);setConfig();assert(server.code==400);
- samples(2000,5);VL53L0X::status=VL53L0X::Invalid;samples(2000,1);assert(detector.active());VL53L0X::status=VL53L0X::RangeValid;samples(2000,10);assert(detector.active());samples(2000,1);assert(!detector.active());assert(history.queued()==2);
+ samples(2000,5);VL53L0X::status=VL53L0X::Invalid;samples(2000,1);assert(detector.active());VL53L0X::status=VL53L0X::RangeValid;samples(2000,300);assert(detector.active());samples(2000,1);assert(!detector.active());assert(history.queued()==2);
  fakeTime+=5000000;history.tick(fakeTime);fakeTime+=5000000;history.tick(fakeTime);getSessions();assert(server.code==200);assert(!deserializeJson(d,server.response));assert(d["events"].size()==1);assert(d["events"][0]["validated"]==true);assert(d["events"][0]["clockAdjusted"]==true);
  server.category="washing";getSessions();assert(server.code==400);server.category="";server.cursor="18446744073709551616";getSessions();assert(server.code==400);server.cursor="";
  VL53L0X::available=false;samples(1000,6);assert(!sensor.healthy);getStatus();assert(!deserializeJson(d,server.response));assert(d["distanceMm"].isNull());
@@ -82,16 +82,17 @@ int main(){
  // Exercise the actual sketch with a VL53L1X, including operational absence.
  Wire.sensorL1=true;Wire.sensorStatus=0;Wire.sensorMm=1500;
  sensor=PresenceSensor{};assert(sensor.begin(fakeTime));detector=lav::Detector{};
- c.v[lav::WASH_SECONDS]=1;c.v[lav::ABSENCE_SECONDS]=1;assert(settings.save(c));
+ c.v[lav::WASH_SECONDS]=60;c.v[lav::ABSENCE_SECONDS]=30;c.v[lav::CANDIDATE_ABSENCE_SECONDS]=3;assert(settings.save(c));
  uint64_t countBefore=history.observed;
  samples(1500,1);assert(detector.state()==lav::State::Candidate);auto sessionId=current.id;
- samples(1500,10);assert(detector.validated&&history.observed==countBefore+1);
- assert(pinValues[19]==1&&pinValues[23]==0);
+ samples(1500,600);assert(detector.validated&&history.observed==countBefore+1);
+ assert(pinValues[19]==1&&pinValues[25]==0);
  getStatus();assert(!deserializeJson(d,server.response));assert(d["presenceSample"]=="present"&&d["distanceValid"]==true&&d["sensorRangeStatus"]==0);
  Wire.sensorStatus=2;samples(2600,1);
  getStatus();assert(!deserializeJson(d,server.response));assert(d["presenceSample"]=="absent"&&d["presenceReason"]=="signal_insufficient"&&d["distanceMm"].isNull()&&d["sensorHealthy"]==true&&d["distanceValid"]==false);
- Wire.sensorStatus=0;samples(2600,4);Wire.sensorStatus=2;samples(2600,5);assert(detector.active()&&pinValues[19]==1);
- samples(2600,1);assert(!detector.active()&&current.id==sessionId&&history.observed==countBefore+1&&pinValues[23]==1&&pinValues[19]==0);
+ Wire.sensorStatus=0;samples(2600,4);Wire.sensorStatus=7;samples(2201,1);assert(detector.active()&&!sensor.healthy&&sensor.presenceSample==lav::Sample::Unknown);
+ Wire.sensorStatus=2;samples(2600,296);assert(detector.active()&&pinValues[19]==1);
+ samples(2600,1);assert(!detector.active()&&current.id==sessionId&&history.observed==countBefore+1&&pinValues[25]==1&&pinValues[19]==0);
  Wire.sensorStatus=0;samples(1000,1);assert(detector.active()&&current.id!=sessionId);
  Wire.sensorStatus=7;samples(1000,1);getStatus();assert(!deserializeJson(d,server.response));assert(d["presenceSample"]=="unknown"&&d["distanceMm"].isNull()&&d["sensorHealthy"]==false);
  Wire.sensorStatus=2;VL53L1X::timedOut=true;samples(1000,1);getStatus();assert(!deserializeJson(d,server.response));assert(d["presenceReason"]=="timeout");
@@ -105,9 +106,14 @@ int main(){
  assert(strstr(Serial.output.c_str(),"ocupacao=unknown")&&strstr(Serial.output.c_str(),"saudavel=nao"));
  // Silencing diagnostics never disables acquisition or its state transitions.
  Serial.input="sensor off\n";Serial.cursor=0;for(unsigned i=0;i<40;i++)automatic.tick(300000,diagnostic,lav::State::Candidate,1500);
- assert(sensor.begin(fakeTime));Wire.sensorStatus=2;samples(2600,11);assert(!detector.active()&&history.observed==countBefore+1);
+ assert(sensor.begin(fakeTime));Wire.sensorStatus=2;samples(2600,31);assert(!detector.active()&&history.observed==countBefore+1);
  fakeTime+=5000000;history.tick(fakeTime);fakeTime+=5000000;history.tick(fakeTime);fakeTime+=5000000;history.tick(fakeTime);
  getSessions();assert(!deserializeJson(d,server.response));unsigned matches=0;
  for(JsonObjectConst event:d["events"].as<JsonArrayConst>())if(strtoull(event["sessionId"]|"0",nullptr,10)==sessionId){matches++;assert(event["validated"]==true&&event["type"]=="closed"&&event["interrupted"]==false);}assert(matches==1);
- puts("PASS VL53L1X sketch: operational absence, one count, consolidated same closing ID, next ID, LEDs, authenticated diagnostics, automatic console and sensor off isolation");
+ JsonDocument rejected;rejected["revision"]=settings.current.revision;configJson(rejected["values"].to<JsonObject>(),settings.current);rejected["values"]["presenceMaxMm"]=600;serializeJson(rejected,server.plain);setConfig();assert(server.code==400);
+ rejected["values"]["presenceMaxMm"]=1500;rejected["values"].remove("candidateAbsenceSeconds");serializeJson(rejected,server.plain);setConfig();assert(server.code==400);
+ getConfig();assert(!deserializeJson(d,server.response));assert(d["fields"].size()==4&&d["fields"][0]["options"].size()==3&&d["fields"][1]["options"].size()==5&&d["fields"][2]["options"].size()==3&&d["fields"][3]["options"].size()==4);
+ puts("PASS VL53L1X sketch: operational absence, one count, consolidated same closing ID, next ID, LEDs, authenticated diagnostics, automatic console, sensor off isolation and fixed configuration API");
 }
+
+

@@ -2,9 +2,16 @@
 #include <stdio.h>
 #include "../firmware/LavCounter/Storage.h"
 int main(){
- legacyDisk.bytes="preserved-old-history";Preferences::legacy="legacy-config";ConfigStore cfg;assert(cfg.begin());assert(cfg.current.v[lav::WASH_SECONDS]==120);auto c=cfg.current;c.v[lav::WASH_SECONDS]=1;assert(cfg.save(c));ConfigStore reboot;assert(reboot.begin());assert(reboot.current.v[lav::WASH_SECONDS]==1);assert(Preferences::legacy=="legacy-config");
- Preferences::fail=true;c.v[lav::WASH_SECONDS]=2;assert(!cfg.save(c));assert(cfg.current.v[lav::WASH_SECONDS]==1);Preferences::fail=false;
+ legacyDisk.bytes="preserved-old-history";Preferences::legacy="legacy-config";ConfigStore cfg;assert(cfg.begin());assert(cfg.current.v[lav::WASH_SECONDS]==120);auto c=cfg.current;c.v[lav::WASH_SECONDS]=60;assert(cfg.save(c));ConfigStore reboot;assert(reboot.begin());assert(reboot.current.v[lav::WASH_SECONDS]==60);assert(reboot.current.v[lav::CANDIDATE_ABSENCE_SECONDS]==5);assert(Preferences::legacy=="legacy-config");
+ Preferences::fail=true;c.v[lav::WASH_SECONDS]=120;assert(!cfg.save(c));assert(cfg.current.v[lav::WASH_SECONDS]==60);Preferences::fail=false;
  JsonDocument configInput,errors;configJson(configInput.to<JsonObject>(),cfg.current);configInput["washMinSeconds"]=1.5;lav::Config parsed;assert(!parseConfig(configInput.as<JsonVariantConst>(),parsed,errors.to<JsonObject>()));
+ String savedConfig=Preferences::config;
+ Preferences::config="{\"revision\":7,\"presenceMaxMm\":1000,\"washMinSeconds\":90,\"absenceMinSeconds\":10}";
+ String originalLegacy=Preferences::config;ConfigStore adapted;assert(adapted.begin());assert(adapted.current.revision==7&&adapted.current.v[lav::PRESENCE_MM]==1000&&adapted.current.v[lav::WASH_SECONDS]==120&&adapted.current.v[lav::ABSENCE_SECONDS]==30&&adapted.current.v[lav::CANDIDATE_ABSENCE_SECONDS]==5);assert(!adapted.error.isEmpty()&&Preferences::config==originalLegacy.c_str());
+ assert(adapted.save(adapted.current));ConfigStore adaptedReboot;assert(adaptedReboot.begin()&&adaptedReboot.error.isEmpty()&&adaptedReboot.current.revision==8);
+ JsonDocument restricted;configJson(restricted.to<JsonObject>(),adaptedReboot.current);restricted["candidateAbsenceSeconds"]=4;assert(!parseConfig(restricted.as<JsonVariantConst>(),parsed,errors.to<JsonObject>()));restricted.remove("candidateAbsenceSeconds");assert(!parseConfig(restricted.as<JsonVariantConst>(),parsed,errors.to<JsonObject>()));
+ Preferences::config="{\"presenceMaxMm\":true,\"washMinSeconds\":120,\"absenceMinSeconds\":10}";ConfigStore corruptLegacy;assert(!corruptLegacy.begin());Preferences::config=savedConfig;
+ puts("PASS configuration: legacy adaptation preserves allowed values/NVS, explicit save/reboot, missing and unsupported choices rejected");
  EventStorage store;assert(store.begin(nullptr));Event e;e.id=1;e.validated=true;e.startedAt="2026-10-01T12:00:00";e.validatedAt="2026-10-01T12:02:00";
  assert(store.enqueue(e));assert(store.enqueue(e));assert(store.observed==1);assert(store.queued()==1);assert(store.totals(false,"2026-10-01").total==0);assert(store.totals(true,"2026-10-01").total==1);store.tick(5000000);assert(store.queued()==0);
  assert(store.totals(false,"2026-10-01").today==1);assert(store.totals(false,"2026-10-02").today==0);
@@ -25,3 +32,4 @@ int main(){
  EventStorage pageBoot;assert(pageBoot.begin(nullptr));assert(pageBoot.observed==66);
  puts("PASS storage: config isolation/reboot/failure, validation+close, dates, partial writes, retry dedup, boot interruption, queue and capacity");
 }
+

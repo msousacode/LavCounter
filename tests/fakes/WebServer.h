@@ -9,7 +9,7 @@ public:
  bool allowed=false;int code=0;String response,plain,category,cursor,limit;
  struct Route {const char* path=nullptr;int method=0;void(*handler)()=nullptr;};Route routes[16];unsigned routeCount=0;void(*notFound)()=nullptr;
  WebServer(int){}
- bool authenticate(const char* u,const char* p){return allowed&&strcmp(u,"lavcounter")==0&&strcmp(p,"lav123")==0;}
+ bool authenticate(const char* u,const char* p){return allowed&&strcmp(u,"lav123")==0&&strcmp(p,"lav123")==0;}
  void requestAuthentication(int,const char*){code=401;response="";}
  void sendHeader(const char*,const char*){}
  void send(int c,const char*,const String& b){code=c;response=b;}

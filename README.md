@@ -4,9 +4,9 @@ Firmware ESP32 que infere uma lavagem por permanência de veículo com VL53L0X o
 
 ## Hardware e calibração
 
-VL53L0X/VL53L1X e RTC DS3231 compartilham SDA GPIO21 / SCL GPIO22. Semáforo: vermelho GPIO23, amarelo GPIO18, verde GPIO19. Consulte [montagem e bancada](docs/BANCADA.md) antes de ligar o módulo. Baia vazia pode ser reconhecida por distância válida acima do limiar ou por status 2 admissível do VL53L1X (sinal insuficiente). Outros resultados inválidos permanecem como falha/desconhecido.
+VL53L0X/VL53L1X e RTC DS3231 compartilham SDA GPIO21 / SCL GPIO22. Semáforo: vermelho GPIO25, amarelo GPIO18, verde GPIO19. Consulte [montagem e bancada](docs/BANCADA.md) antes de ligar o módulo. Baia vazia pode ser reconhecida por distância válida acima do limiar ou por status 2 admissível do VL53L1X (sinal insuficiente). Outros resultados inválidos permanecem como falha/desconhecido.
 
-Padrões: distância máxima 1500 mm, permanência mínima 120 s, ausência mínima 10 s. Configure pelo painel; mudanças valem para novas sessões. Ao ligar ou reiniciar, começa em IDLE e detecta sem exigir baia vazia prévia. Consulte [máquina de estados](docs/DETECCAO.md).
+Padrões: distância máxima 1,5 m, permanência mínima 2 min, ausência de 30 s para encerrar lavagem validada e 5 s para invalidar candidata. O painel oferece apenas as opções permitidas, com os dois tempos independentes. Configure pelo painel; mudanças valem para novas sessões. Ao ligar ou reiniciar, começa em IDLE e detecta sem exigir baia vazia prévia. Consulte [máquina de estados](docs/DETECCAO.md).
 
 ## Compilar
 
@@ -35,7 +35,7 @@ Na IDE, instale também **VL53L0X** e **VL53L1X**, de Pololu, versão **1.3.1**,
 
 ## Acesso local
 
-Rede **LavCounter**, senha **lavcounter123**. Acesse http://192.168.4.1 (mDNS lavcounter.local quando disponível). HTTP Basic: usuário **lavcounter**, senha **lav123**. Todas as rotas exigem autenticação. O serviço é local e não usa TLS.
+Rede **LavCounter**, senha **lavcounter123**. Acesse http://192.168.4.1 (mDNS lavcounter.local quando disponível). HTTP Basic: usuário **lav123**, senha **lav123**. Todas as rotas exigem autenticação. O serviço é local e não usa TLS.
 
 Painel: contagem observada, persistida, diária, sessão, distância, saúde do sensor, histórico e parametrização. Dados locais não dependem da futura camada SaaS; não há métricas financeiras nesta versão. RTC inválido deixa o diário indisponível, sem interromper a temporização monotônica.
 
@@ -66,3 +66,5 @@ Testes nativos usam Zig 0.14.1 e periféricos simulados; web usa Edge e API simu
 ## Origem
 
 Veja [proveniência histórica](docs/PROVENIENCIA.md).
+
+

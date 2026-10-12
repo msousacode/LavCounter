@@ -22,9 +22,8 @@ inline bool parseConfig(JsonVariantConst input,lav::Config& c,JsonObject errors)
   else {
    double value=v.as<double>(),step=lav::FIELDS[i].step;
    double rounded=round(value/step)*step;
-   if(!isfinite(value)||value<lav::FIELDS[i].min-step/100||value>lav::FIELDS[i].max+step/100||
-      (floor(value)!=value)){
-    errors[lav::FIELDS[i].key]="Use um valor dentro dos limites e da precisão indicada.";ok=false;
+   if(!lav::allowed(i,value)){
+    errors[lav::FIELDS[i].key]="Selecione uma das opções disponíveis.";ok=false;
    }
    else c.v[i]=rounded;
   }
@@ -41,7 +40,18 @@ public:
   ready=prefs.begin(name,false);if(!ready){error="Não foi possível abrir a configuração.";return false;}
   String saved=prefs.getString("presenceConfig","");if(saved.isEmpty())return true;
   JsonDocument d,errors;
-  if(deserializeJson(d,saved)||!parseConfig(d.as<JsonVariantConst>(),current,errors.to<JsonObject>())){current=lav::Config{};error="Configuração inválida; padrões carregados. Salve para corrigir.";return false;}
+  if(deserializeJson(d,saved)){error="Configuração inválida; padrões carregados. Salve para corrigir.";return false;}
+  if(d["candidateAbsenceSeconds"].isNull()){
+   // Adapt only the former three-field format; keep NVS untouched until Save.
+   const double legacyMin[]={100,1,1},legacyMax[]={4000,86400,3600};
+   for(size_t i=0;i<3;i++){
+    auto old=d[lav::FIELDS[i].key];double value=old.as<double>();
+    if(!old.is<double>()||old.is<bool>()||!isfinite(value)||floor(value)!=value||value<legacyMin[i]||value>legacyMax[i]){current=lav::Config{};error="Configuração inválida; padrões carregados. Salve para corrigir.";return false;}
+    if(lav::allowed(i,value))current.v[i]=value;
+   }
+   current.revision=d["revision"]|1U;error="Configuração anterior adaptada às novas opções. Confira e salve os quatro parâmetros.";return true;
+  }
+  if(!parseConfig(d.as<JsonVariantConst>(),current,errors.to<JsonObject>())){current=lav::Config{};error="Configuração inválida; padrões carregados. Salve para corrigir.";return false;}
   current.revision=d["revision"]|1U;return true;
  }
  bool save(lav::Config next){
@@ -67,6 +77,7 @@ public:
   for(const auto& f:lav::FIELDS){
    JsonObject o=fields.add<JsonObject>();o["key"]=f.key;o["label"]=f.label;o["unit"]=f.unit;o["help"]=f.help;
    o["min"]=serialized(String(f.min,3U));o["max"]=serialized(String(f.max,3U));o["step"]=serialized(String(f.step,3U));o["group"]=f.group;
+   JsonArray choices=o["options"].to<JsonArray>();for(size_t i=0;i<f.choiceCount;i++){JsonObject choice=choices.add<JsonObject>();choice["value"]=f.choices[i].value;choice["label"]=f.choices[i].label;}
   }
  }
 };

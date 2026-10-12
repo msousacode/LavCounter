@@ -15,7 +15,7 @@
 #include "CloudNetwork.h"
 #include "FirebaseTest.h"
 // Active-high indicators: GPIO -> LED with built-in resistor -> GND.
-constexpr int LED_RED_PIN=23;
+constexpr int LED_RED_PIN=25;
 constexpr int LED_YELLOW_PIN=18;
 constexpr int LED_GREEN_PIN=19;
 void updateLeds(lav::State state,bool healthy,uint64_t now){
@@ -43,7 +43,8 @@ void servicePresence(){
  uint64_t now=esp_timer_get_time();lav::Sample sample;
  const auto& c=detector.active()?detector.config:settings.current;
  if(sensor.poll(now,sample,c.v[lav::PRESENCE_MM])){
-  auto change=detector.sample(now,sample,settings.current);
+  bool pauseExit=sample==lav::Sample::Unknown&&sensor.modelId==0xEACC&&sensor.rangeStatus==7&&strcmp(sensor.presenceReason,"invalid_range")==0;
+  auto change=detector.sample(now,sample,settings.current,pauseExit);
   if(change.started){current=Event{};current.id=settings.reserveId();current.config=detector.config;current.startedAt=rtc.at(now);sessionClockRevision=rtc.revision;}
   if(change.validated||change.closed){current.validated=detector.validated;current.durationMs=(now-detector.startedUs)/1000;current.clockAdjusted=rtc.revision!=sessionClockRevision;
    if(change.validated)current.validatedAt=rtc.at(now);
@@ -54,7 +55,7 @@ void servicePresence(){
  updateLeds(detector.state(),sensor.healthy,now);
  servicing=false;
 }
-bool authenticated(){if(server.authenticate("lavcounter","lav123"))return true;server.requestAuthentication(BASIC_AUTH,"LavCounter");return false;}
+bool authenticated(){if(server.authenticate("lav123","lav123"))return true;server.requestAuthentication(BASIC_AUTH,"LavCounter");return false;}
 void sendJson(int code,JsonDocument& d){String body;serializeJson(d,body);server.sendHeader("Cache-Control","no-store");server.send(code,"application/json; charset=utf-8",body);}
 void errorResponse(int code,const char* message){JsonDocument d;d["error"]=message;sendJson(code,d);}
 void getStatus(){
@@ -140,3 +141,4 @@ void setup(){
  server.onNotFound([]{if(authenticated())errorResponse(404,"Recurso não encontrado.");});server.begin();history.setService(servicePresence);
 }
 void loop(){servicePresence();uint64_t now=esp_timer_get_time();if(now-lastRtcPoll>=1000000){rtc.poll(now);lastRtcPoll=now;}history.tick(now);servicePresence();cloudNetwork.tick(now);cloudSync.tick(now,cloudNetwork.connected());if(cloudSync.completionPending){cloudSync.completedAt(rtc.at(now));cloudSync.completionPending=false;}servicePresence();server.handleClient();servicePresence();sensorConsole.tick(esp_timer_get_time(),sensor,detector.state(),(detector.active()?detector.config:settings.current).v[lav::PRESENCE_MM]);delay(1);}
+
